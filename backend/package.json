@@ -1,6 +1,9 @@
 {
   "name": "signal-service-backend",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "description": "Trading Signal Service Backend with Auth, OTP, and Subscriptions",
   "type": "module",
   "main": "dist/index.js",
