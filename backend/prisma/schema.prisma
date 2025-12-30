@@ -1,0 +1,487 @@
+// Prisma Schema for Trading Signal Service
+// Includes: Users, Auth, OTP, Subscriptions, Payments, Signals
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// USER & AUTHENTICATION
+// ============================================================================
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String
+  name              String?
+  phone             String?
+  avatar            String?
+
+  // Email verification
+  emailVerified     Boolean   @default(false)
+  emailVerifiedAt   DateTime?
+
+  // 2FA Settings
+  twoFactorEnabled  Boolean   @default(false)
+  twoFactorSecret   String?   // TOTP secret for authenticator apps
+  twoFactorMethod   TwoFactorMethod @default(EMAIL)
+
+  // Account status
+  status            UserStatus @default(ACTIVE)
+  role              UserRole   @default(USER)
+
+  // MT5 Account linking
+  mt5Accounts       MT5Account[]
+
+  // Subscription
+  subscription      Subscription?
+  payments          Payment[]
+
+  // Signals (for signal providers)
+  sentSignals       Signal[]   @relation("SignalProvider")
+
+  // Signal executions (for subscribers)
+  executions        SignalExecution[]
+
+  // OTP tokens
+  otpTokens         OTPToken[]
+
+  // Sessions
+  sessions          Session[]
+
+  // Reports
+  monthlyReports    MonthlyReport[]
+
+  // Audit
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastLoginAt       DateTime?
+  lastLoginIp       String?
+
+  @@index([email])
+  @@index([status])
+}
+
+model Session {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  token         String   @unique
+  refreshToken  String?  @unique
+
+  userAgent     String?
+  ipAddress     String?
+
+  expiresAt     DateTime
+  createdAt     DateTime @default(now())
+
+  @@index([token])
+  @@index([userId])
+}
+
+model OTPToken {
+  id          String      @id @default(uuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  code        String
+  type        OTPType
+  method      OTPMethod
+
+  expiresAt   DateTime
+  usedAt      DateTime?
+  attempts    Int         @default(0)
+
+  createdAt   DateTime    @default(now())
+
+  @@index([userId, type])
+  @@index([code])
+}
+
+// ============================================================================
+// MT5 ACCOUNTS
+// ============================================================================
+
+model MT5Account {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  accountId     String   // Alias like "MASTER_001" or "SLAVE_001"
+  accountType   MT5AccountType
+  broker        String?
+  server        String?
+
+  // API Key for EA authentication (long-lived, never expires)
+  apiKey        String?  @unique
+
+  // Connection status
+  isConnected   Boolean  @default(false)
+  lastHeartbeat DateTime?
+
+  // Stats (updated via heartbeats)
+  balance       Decimal  @default(0) @db.Decimal(15, 2)
+  equity        Decimal  @default(0) @db.Decimal(15, 2)
+  profit        Decimal  @default(0) @db.Decimal(15, 2)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Signals sent from this account (if MASTER)
+  signals       Signal[]
+
+  // Executions on this account (if SLAVE)
+  executions    SignalExecution[]
+
+  // Balance history snapshots
+  snapshots     AccountSnapshot[]
+
+  @@unique([userId, accountId])
+  @@index([accountId])
+  @@index([apiKey])
+}
+
+// ============================================================================
+// SUBSCRIPTION & PAYMENTS
+// ============================================================================
+
+model SubscriptionTier {
+  id                  String   @id @default(uuid())
+  name                String   @unique  // "free", "basic", "pro", "premium"
+  displayName         String              // "Free", "Basic", "Pro", "Premium"
+  description         String?
+
+  // Pricing
+  priceMonthly        Decimal  @db.Decimal(10, 2)
+  priceYearly         Decimal  @db.Decimal(10, 2)
+  currency            String   @default("USD")
+
+  // Stripe price IDs
+  stripePriceMonthly  String?
+  stripePriceYearly   String?
+
+  // Features & Limits
+  maxSignalsPerDay    Int      @default(-1)  // -1 = unlimited
+  maxSlaveAccounts    Int      @default(1)
+  signalDelay         Int      @default(0)   // Delay in seconds before receiving signals
+  features            Json     @default("[]") // Array of feature strings
+
+  // Display
+  isPopular           Boolean  @default(false)
+  sortOrder           Int      @default(0)
+  isActive            Boolean  @default(true)
+
+  subscriptions       Subscription[]
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([name])
+}
+
+model Subscription {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  tierId              String
+  tier                SubscriptionTier @relation(fields: [tierId], references: [id])
+
+  // Status
+  status              SubscriptionStatus @default(ACTIVE)
+
+  // Billing
+  billingCycle        BillingCycle @default(MONTHLY)
+
+  // Stripe
+  stripeCustomerId    String?
+  stripeSubscriptionId String?
+
+  // Dates
+  currentPeriodStart  DateTime
+  currentPeriodEnd    DateTime
+  cancelAtPeriodEnd   Boolean  @default(false)
+  canceledAt          DateTime?
+
+  // Trial
+  trialStart          DateTime?
+  trialEnd            DateTime?
+
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([currentPeriodEnd])
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Amount
+  amount            Decimal  @db.Decimal(10, 2)
+  currency          String   @default("USD")
+
+  // Status
+  status            PaymentStatus @default(PENDING)
+
+  // Stripe
+  stripePaymentId   String?  @unique
+  stripeInvoiceId   String?
+
+  // Details
+  description       String?
+  metadata          Json?
+
+  // Dates
+  paidAt            DateTime?
+  failedAt          DateTime?
+  refundedAt        DateTime?
+
+  createdAt         DateTime @default(now())
+
+  @@index([userId])
+  @@index([status])
+  @@index([stripePaymentId])
+}
+
+// ============================================================================
+// SIGNALS & EXECUTIONS
+// ============================================================================
+
+model Signal {
+  id              String   @id @default(uuid())
+
+  // Provider
+  providerId      String
+  provider        User     @relation("SignalProvider", fields: [providerId], references: [id])
+
+  // Source account
+  mt5AccountId    String?
+  mt5Account      MT5Account? @relation(fields: [mt5AccountId], references: [id])
+
+  // Signal details
+  action          SignalAction
+  symbol          String
+  type            TradeType
+
+  volume          Decimal  @db.Decimal(10, 2)
+  price           Decimal  @db.Decimal(15, 5)
+  sl              Decimal? @db.Decimal(15, 5)
+  tp              Decimal? @db.Decimal(15, 5)
+
+  // Master ticket for tracking
+  masterTicket    BigInt?
+
+  // Metadata
+  comment         String?
+  magic           Int?
+
+  // Status
+  status          SignalStatus @default(PENDING)
+  expiresAt       DateTime
+
+  // Executions by subscribers
+  executions      SignalExecution[]
+
+  createdAt       DateTime @default(now())
+
+  @@index([providerId])
+  @@index([status])
+  @@index([symbol])
+  @@index([createdAt])
+}
+
+model SignalExecution {
+  id              String   @id @default(uuid())
+
+  signalId        String
+  signal          Signal   @relation(fields: [signalId], references: [id], onDelete: Cascade)
+
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  mt5AccountId    String?
+  mt5Account      MT5Account? @relation(fields: [mt5AccountId], references: [id])
+
+  // Execution details
+  status          ExecutionStatus @default(PENDING)
+
+  executedVolume  Decimal? @db.Decimal(10, 2)
+  executedPrice   Decimal? @db.Decimal(15, 5)
+  slippage        Decimal? @db.Decimal(15, 5)
+
+  // Result ticket
+  slaveTicket     BigInt?
+
+  // Error tracking
+  errorCode       Int?
+  errorMessage    String?
+
+  // Timing
+  receivedAt      DateTime @default(now())
+  executedAt      DateTime?
+  acknowledgedAt  DateTime?
+
+  @@unique([signalId, userId])
+  @@index([userId])
+  @@index([status])
+}
+
+// ============================================================================
+// REPORTS & ANALYTICS
+// ============================================================================
+
+model MonthlyReport {
+  id              String   @id @default(uuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  year            Int
+  month           Int
+
+  // Trading stats
+  totalSignals    Int      @default(0)
+  executedSignals Int      @default(0)
+
+  winningTrades   Int      @default(0)
+  losingTrades    Int      @default(0)
+
+  totalProfit     Decimal  @db.Decimal(15, 2) @default(0)
+  totalLoss       Decimal  @db.Decimal(15, 2) @default(0)
+  netProfit       Decimal  @db.Decimal(15, 2) @default(0)
+
+  // Account stats (end of month snapshot)
+  endBalance      Decimal? @db.Decimal(15, 2)
+  endEquity       Decimal? @db.Decimal(15, 2)
+
+  // Subscription
+  subscriptionTier String?
+
+  generatedAt     DateTime @default(now())
+
+  @@unique([userId, year, month])
+  @@index([userId])
+}
+
+model AccountSnapshot {
+  id            String   @id @default(uuid())
+  mt5AccountId  String
+  mt5Account    MT5Account @relation(fields: [mt5AccountId], references: [id], onDelete: Cascade)
+
+  // Balance data captured from heartbeat
+  balance       Decimal  @db.Decimal(15, 2)
+  equity        Decimal  @db.Decimal(15, 2)
+  profit        Decimal  @db.Decimal(15, 2)
+
+  // Peak equity for drawdown calculation (highest equity seen up to this point)
+  peakEquity    Decimal  @db.Decimal(15, 2)
+
+  // Date of snapshot (stored as DATE only, not timestamp)
+  snapshotDate  DateTime @db.Date
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Only one snapshot per account per day
+  @@unique([mt5AccountId, snapshotDate])
+  @@index([mt5AccountId])
+  @@index([snapshotDate])
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+enum UserStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+  PENDING_VERIFICATION
+}
+
+enum UserRole {
+  USER
+  PROVIDER     // Can send signals
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum TwoFactorMethod {
+  EMAIL
+  SMS
+  TOTP         // Authenticator app
+}
+
+enum OTPType {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+  TWO_FACTOR_LOGIN
+  PHONE_VERIFICATION
+}
+
+enum OTPMethod {
+  EMAIL
+  SMS
+}
+
+enum MT5AccountType {
+  MASTER       // Sends signals
+  SLAVE        // Receives signals
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_DUE
+  CANCELED
+  EXPIRED
+  TRIALING
+}
+
+enum BillingCycle {
+  MONTHLY
+  YEARLY
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+  REFUNDED
+  CANCELED
+}
+
+enum SignalAction {
+  OPEN
+  CLOSE
+  MODIFY
+}
+
+enum TradeType {
+  BUY
+  SELL
+}
+
+enum SignalStatus {
+  PENDING
+  ACTIVE
+  EXECUTED
+  EXPIRED
+  CANCELED
+}
+
+enum ExecutionStatus {
+  PENDING
+  EXECUTED
+  FAILED
+  SKIPPED
+  EXPIRED
+}

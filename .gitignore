@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+dist/
+build/
+.next/
+out/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE
+.idea/
+.vscode/
+.claude/settings.local.json
+*.swp
+*.swo
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Testing
+coverage/
+.nyc_output/
+
+
+
+# Misc
+*.tsbuildinfo
+.turbo/
+
+# Windows reserved names
+nul
+
+EA's/SignalSenderEA.mq5
+EA's/SignalReceiverEA.mq5
+
+CLAUDE_STATE.md
+
+.claude/skill/skill.md
+
+# Temporary/sensitive files
+temp_login.json
+provider_login.json
+**/temp_login.json
+D*temp_login.json

@@ -1,0 +1,54 @@
+# Render Blueprint - Signal Service Platform
+# Deploy with: render blueprint new
+
+services:
+  # Backend API
+  - type: web
+    name: signal-service-api
+    env: node
+    region: oregon
+    plan: free
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+      - key: DATABASE_URL
+        fromDatabase:
+          name: signal-service-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+
+  # Frontend (Next.js)
+  - type: web
+    name: signal-service-frontend
+    env: node
+    region: oregon
+    plan: free
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: signal-service-api
+          envVarKey: RENDER_EXTERNAL_URL
+
+databases:
+  - name: signal-service-db
+    databaseName: signal_service
+    user: signal_user
+    plan: free
+    region: oregon
