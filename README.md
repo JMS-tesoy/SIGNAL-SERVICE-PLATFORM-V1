@@ -1,5 +1,12 @@
 # Signal Service Platform
 
+## Use Cases
+- Automated signal distribution between trading platforms and backend systems
+- AI-assisted automation workflows (e.g., filtering and routing signals)
+- Cross-platform integrations (APIs, webhooks, messaging, and analytics)
+- Foundation for workflow automation with Zapier, n8n, or custom orchestrators
+
+
 A comprehensive full-stack trading signal service with MQL5 integration, user authentication, OTP verification, subscription management, and real-time dashboard.
 
 ## 🏗️ Architecture Overview
@@ -143,6 +150,11 @@ pnpm dev
   - TOTP (Authenticator apps)
 - ✅ Password reset flow
 - ✅ Session management
+- ✅ Event-driven architecture for signal handling
+- ✅ Secure API endpoints with authentication
+- ✅ Scalable backend capabilities (Node.js / TypeScript)
+- ✅ Designed for real-world usage (not just demos)
+
 
 ### Subscription Management
 
