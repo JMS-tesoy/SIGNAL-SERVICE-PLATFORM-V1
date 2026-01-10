@@ -133,6 +133,7 @@ pnpm dev
 ## 🔑 Features
 
 ### Authentication & Security
+
 - ✅ Email/password registration
 - ✅ JWT access & refresh tokens
 - ✅ Email verification (OTP)
@@ -144,6 +145,7 @@ pnpm dev
 - ✅ Session management
 
 ### Subscription Management
+
 - ✅ Multiple subscription tiers (Free, Basic, Pro, Premium)
 - ✅ Stripe payment integration
 - ✅ Checkout sessions
@@ -153,6 +155,7 @@ pnpm dev
 - ✅ Feature gating based on tier
 
 ### Signal Service
+
 - ✅ Receive signals from MT5 Sender EA
 - ✅ Queue signals for subscribers
 - ✅ Signal delay based on subscription tier
@@ -162,6 +165,7 @@ pnpm dev
 - ✅ Signal history & statistics
 
 ### Cron Jobs (Scheduled Tasks)
+
 - ✅ **Every minute**: Cleanup expired signals
 - ✅ **Every hour**: Check disconnected MT5 accounts
 - ✅ **Daily at midnight**: Check expiring subscriptions
@@ -170,6 +174,7 @@ pnpm dev
 - ✅ **Monthly (1st)**: Generate monthly reports & emails
 
 ### Dashboard
+
 - ✅ Real-time signal display
 - ✅ Account statistics
 - ✅ MT5 account management
@@ -180,51 +185,55 @@ pnpm dev
 ## 📡 API Endpoints
 
 ### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/auth/register` | Create new account |
-| POST | `/api/auth/login` | Login (returns tokens or 2FA challenge) |
-| POST | `/api/auth/verify-2fa` | Complete 2FA login |
-| POST | `/api/auth/refresh` | Refresh access token |
-| POST | `/api/auth/logout` | Invalidate session |
-| POST | `/api/auth/forgot-password` | Request password reset |
-| POST | `/api/auth/reset-password` | Reset password with OTP |
-| GET | `/api/auth/me` | Get current user |
+
+| Method | Endpoint                    | Description                             |
+| ------ | --------------------------- | --------------------------------------- |
+| POST   | `/api/auth/register`        | Create new account                      |
+| POST   | `/api/auth/login`           | Login (returns tokens or 2FA challenge) |
+| POST   | `/api/auth/verify-2fa`      | Complete 2FA login                      |
+| POST   | `/api/auth/refresh`         | Refresh access token                    |
+| POST   | `/api/auth/logout`          | Invalidate session                      |
+| POST   | `/api/auth/forgot-password` | Request password reset                  |
+| POST   | `/api/auth/reset-password`  | Reset password with OTP                 |
+| GET    | `/api/auth/me`              | Get current user                        |
 
 ### OTP
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/otp/send/email` | Send email OTP |
-| POST | `/api/otp/send/sms` | Send SMS OTP |
-| POST | `/api/otp/verify` | Verify OTP code |
-| POST | `/api/otp/totp/setup` | Setup authenticator app |
-| POST | `/api/otp/totp/enable` | Enable 2FA with TOTP |
-| POST | `/api/otp/totp/disable` | Disable 2FA |
-| GET | `/api/otp/status` | Get 2FA status |
+
+| Method | Endpoint                | Description             |
+| ------ | ----------------------- | ----------------------- |
+| POST   | `/api/otp/send/email`   | Send email OTP          |
+| POST   | `/api/otp/send/sms`     | Send SMS OTP            |
+| POST   | `/api/otp/verify`       | Verify OTP code         |
+| POST   | `/api/otp/totp/setup`   | Setup authenticator app |
+| POST   | `/api/otp/totp/enable`  | Enable 2FA with TOTP    |
+| POST   | `/api/otp/totp/disable` | Disable 2FA             |
+| GET    | `/api/otp/status`       | Get 2FA status          |
 
 ### Subscriptions
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/subscriptions/tiers` | Get all subscription tiers |
-| GET | `/api/subscriptions/current` | Get current subscription |
-| POST | `/api/subscriptions/checkout` | Create Stripe checkout |
-| POST | `/api/subscriptions/cancel` | Cancel subscription |
-| POST | `/api/subscriptions/resume` | Resume canceled subscription |
-| POST | `/api/subscriptions/change-tier` | Upgrade/downgrade tier |
-| GET | `/api/subscriptions/payments` | Get payment history |
-| GET | `/api/subscriptions/billing-portal` | Get Stripe billing portal URL |
-| GET | `/api/subscriptions/signal-limit` | Check daily signal limit |
+
+| Method | Endpoint                            | Description                   |
+| ------ | ----------------------------------- | ----------------------------- |
+| GET    | `/api/subscriptions/tiers`          | Get all subscription tiers    |
+| GET    | `/api/subscriptions/current`        | Get current subscription      |
+| POST   | `/api/subscriptions/checkout`       | Create Stripe checkout        |
+| POST   | `/api/subscriptions/cancel`         | Cancel subscription           |
+| POST   | `/api/subscriptions/resume`         | Resume canceled subscription  |
+| POST   | `/api/subscriptions/change-tier`    | Upgrade/downgrade tier        |
+| GET    | `/api/subscriptions/payments`       | Get payment history           |
+| GET    | `/api/subscriptions/billing-portal` | Get Stripe billing portal URL |
+| GET    | `/api/subscriptions/signal-limit`   | Check daily signal limit      |
 
 ### Signals (For MT5 EAs)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/signals` | Receive signal from Sender EA |
-| POST | `/api/signals/heartbeat` | Update account heartbeat |
-| GET | `/api/signals/pending` | Get pending signals for Receiver EA |
-| POST | `/api/signals/ack` | Acknowledge signal execution |
-| POST | `/api/signals/positions` | Update positions snapshot |
-| GET | `/api/signals/history` | Get signal history |
-| GET | `/api/signals/stats` | Get signal statistics |
+
+| Method | Endpoint                 | Description                         |
+| ------ | ------------------------ | ----------------------------------- |
+| POST   | `/api/signals`           | Receive signal from Sender EA       |
+| POST   | `/api/signals/heartbeat` | Update account heartbeat            |
+| GET    | `/api/signals/pending`   | Get pending signals for Receiver EA |
+| POST   | `/api/signals/ack`       | Acknowledge signal execution        |
+| POST   | `/api/signals/positions` | Update positions snapshot           |
+| GET    | `/api/signals/history`   | Get signal history                  |
+| GET    | `/api/signals/stats`     | Get signal statistics               |
 
 ## 🔧 Environment Variables
 
@@ -261,16 +270,17 @@ FRONTEND_URL="http://localhost:3000"
 
 ## 💳 Subscription Tiers
 
-| Tier | Price | Signals/Day | MT5 Accounts | Signal Delay |
-|------|-------|-------------|--------------|--------------|
-| Free | $0 | 5 | 1 | 60 seconds |
-| Basic | $29/mo | 50 | 2 | 30 seconds |
-| Pro | $79/mo | Unlimited | 5 | 5 seconds |
-| Premium | $199/mo | Unlimited | 20 | Instant |
+| Tier    | Price   | Signals/Day | MT5 Accounts | Signal Delay |
+| ------- | ------- | ----------- | ------------ | ------------ |
+| Free    | $0      | 5           | 1            | 60 seconds   |
+| Basic   | $29/mo  | 50          | 2            | 30 seconds   |
+| Pro     | $79/mo  | Unlimited   | 5            | 5 seconds    |
+| Premium | $199/mo | Unlimited   | 20           | Instant      |
 
 ## 🔐 OTP Flow
 
 ### Email Verification
+
 ```
 1. User registers → Account created (unverified)
 2. System sends 6-digit OTP to email
@@ -279,6 +289,7 @@ FRONTEND_URL="http://localhost:3000"
 ```
 
 ### Two-Factor Authentication
+
 ```
 1. User logs in with email/password
 2. If 2FA enabled:
@@ -288,6 +299,7 @@ FRONTEND_URL="http://localhost:3000"
 ```
 
 ### TOTP Setup
+
 ```
 1. User requests TOTP setup
 2. System generates secret + QR code
@@ -363,7 +375,7 @@ Or integrate with the main server by importing `startCronJobs()` in `index.ts`.
 ## 📞 Support
 
 - Documentation: [docs.signalservice.com](#)
-- Email: support@signalservice.com
+- Email: fxjoel237@gmail.com
 - Discord: [Join Community](#)
 
 ---
