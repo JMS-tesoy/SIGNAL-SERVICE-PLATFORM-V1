@@ -1,9 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
-  "buildCommand": "npm run build",
+  "buildCommand": "pnpm build",
   "outputDirectory": ".next",
-  "installCommand": "npm install",
+  "installCommand": "pnpm install",
   "regions": ["iad1"],
   "env": {
     "NEXT_PUBLIC_API_URL": "@api_url"

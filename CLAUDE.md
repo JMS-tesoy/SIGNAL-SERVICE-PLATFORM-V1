@@ -8,32 +8,32 @@ MT5 trading signal service platform: MASTER MT5 account sends signals → Backen
 
 **Production URLs:**
 - Frontend: https://signal-service-frontend-production.up.railway.app
-- Backend API: https://signal-service-api-production.up.railway.app
+- Backend API: https://signal-service-api-v2-production.up.railway.app
 
 ## Development Commands
 
 ```bash
 # Backend (from /backend)
-npm run dev              # Start dev server (tsx watch)
-npm run build            # TypeScript compile
-npm start                # Run production build
-npm run db:generate      # Generate Prisma client
-npm run db:push          # Push schema to database
-npm run db:migrate       # Run migrations
-npm run db:studio        # Open Prisma Studio GUI
-npx prisma db seed       # Seed subscription tiers + admin user
+pnpm dev                 # Start dev server (tsx watch)
+pnpm build               # TypeScript compile
+pnpm start               # Run production build
+pnpm db:generate         # Generate Prisma client
+pnpm db:push             # Push schema to database
+pnpm db:migrate          # Run migrations
+pnpm db:studio           # Open Prisma Studio GUI
+pnpm prisma db seed      # Seed subscription tiers + admin user
 
 # Frontend (from /frontend)
-npm run dev              # Start Next.js dev server (port 3000)
-npm run build            # Production build
-npm run lint             # ESLint
+pnpm dev                 # Start Next.js dev server (port 3000)
+pnpm build               # Production build
+pnpm lint                # ESLint
 ```
 
 ## Tech Stack
 
-**Backend:** Node.js + Express (ES modules), Prisma + PostgreSQL, JWT auth, Stripe, Resend email, Twilio SMS, node-cron, zod validation
+**Backend:** Node.js 18+ (ES modules), Express, Prisma + PostgreSQL, JWT auth, Stripe, Resend email, Twilio SMS, node-cron, zod validation
 
-**Frontend:** Next.js 16 + React 18, Zustand state, Tailwind CSS + Radix UI, Recharts, Framer Motion
+**Frontend:** Next.js 16 + React 18 (requires Node.js 20.9.0+), Zustand state, Tailwind CSS + Radix UI, Recharts, Framer Motion
 
 ## Architecture
 
@@ -45,19 +45,42 @@ Signal Flow:
 4. Receiver EA → POST /api/signals/ack → Confirms execution
 ```
 
-**Signal Delay:** Implemented via `SignalExecution.receivedAt` offset; receiver filters by `receivedAt <= NOW()`
+**Signal Delay:** Implemented via `signal.createdAt` filter in `getPendingSignals()`; only returns signals where `createdAt <= NOW() - tierDelay`
 
-**MT5 Auth:** EAs authenticate via `X-API-Key` header (API keys never expire, unlike JWT)
+**MT5 Auth:** EAs authenticate via `X-API-Key` header (API keys stored in MT5Account model, never expire)
+
+**Dual Auth System:**
+- Web clients use JWT (Bearer token) with short expiry + refresh tokens
+- MT5 EAs use API keys (`X-API-Key` header) - validated against `MT5Account.apiKey`
 
 ## Key Files
 
-- `backend/prisma/schema.prisma` - Database models
+- `backend/prisma/schema.prisma` - Database models (User, Subscription, Signal, SignalExecution, MT5Account)
 - `backend/src/index.ts` - Express app entry, rate limiters, route mounting
-- `backend/src/middleware/auth.middleware.ts` - JWT + API key authentication
-- `backend/src/services/signal.service.ts` - Signal creation and distribution logic
+- `backend/src/middleware/auth.middleware.ts` - JWT + API key authentication (see `authenticateWithApiKey`)
+- `backend/src/services/signal.service.ts` - Signal creation (`receiveSignal`), distribution (`createExecutionsForSubscribers`), polling (`getPendingSignals`), acknowledgment (`acknowledgeExecution`)
+- `backend/src/services/subscription.service.ts` - Tier limits, Stripe integration
 - `backend/src/jobs/scheduler.ts` - Cron jobs (cleanup, reports, subscription checks)
 - `frontend/src/lib/store.ts` - Zustand state (auth tokens, user)
 - `frontend/src/lib/api.ts` - API client with auto Bearer token injection
+
+## Signal Processing Details
+
+**Signal Creation (`receiveSignal`):**
+- Creates `Signal` record from MASTER EA
+- Calls `createExecutionsForSubscribers()` to fan out to all active SLAVE accounts
+- Signals expire after 2 minutes (`expiresAt: Date.now() + 120s`)
+
+**Signal Polling (`getPendingSignals`):**
+- Called by SLAVE EA repeatedly
+- Filters by: user's SLAVE account, tier delay, signal not expired
+- Updates SLAVE's `lastHeartbeat` on each poll
+- Returns max 10 signals per request
+
+**Acknowledgment (`acknowledgeExecution`):**
+- Idempotent: checks if already in terminal state before updating
+- Terminal states: EXECUTED, FAILED, EXPIRED, SKIPPED
+- Uses `updateMany` with `status: 'PENDING'` condition to prevent races
 
 ## Subscription Tiers (seeded)
 

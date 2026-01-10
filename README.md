@@ -89,9 +89,9 @@ signal-service-platform/
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 18+ (Frontend requires 20.9.0+)
 - PostgreSQL 14+
-- npm or yarn
+- pnpm
 
 ### Backend Setup
 
@@ -99,23 +99,23 @@ signal-service-platform/
 cd backend
 
 # Install dependencies
-npm install
+pnpm install
 
 # Configure environment
 cp .env.example .env
 # Edit .env with your database URL and API keys
 
 # Generate Prisma client
-npx prisma generate
+pnpm prisma generate
 
 # Run database migrations
-npx prisma db push
+pnpm prisma db push
 
 # Seed initial data (subscription tiers, admin user)
-npx prisma db seed
+pnpm prisma db seed
 
 # Start development server
-npm run dev
+pnpm dev
 ```
 
 ### Frontend Setup
@@ -124,10 +124,10 @@ npm run dev
 cd frontend
 
 # Install dependencies
-npm install
+pnpm install
 
 # Start development server
-npm run dev
+pnpm dev
 ```
 
 ## 🔑 Features
@@ -328,10 +328,10 @@ Reports are stored in the database and emailed to users.
 
 ```bash
 # Build
-npm run build
+pnpm build
 
 # Start production
-npm start
+pnpm start
 
 # Or with PM2
 pm2 start dist/index.js --name signal-api
@@ -341,10 +341,10 @@ pm2 start dist/index.js --name signal-api
 
 ```bash
 # Build
-npm run build
+pnpm build
 
 # Start production
-npm start
+pnpm start
 
 # Or deploy to Vercel
 vercel deploy --prod
@@ -355,7 +355,7 @@ vercel deploy --prod
 Run the scheduler as a separate process:
 
 ```bash
-npm run cron:start
+pnpm cron:start
 ```
 
 Or integrate with the main server by importing `startCronJobs()` in `index.ts`.

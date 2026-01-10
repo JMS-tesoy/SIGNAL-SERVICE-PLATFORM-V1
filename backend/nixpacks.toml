@@ -1,11 +1,11 @@
 [phases.setup]
-nixPkgs = ["nodejs_20", "npm"]
+nixPkgs = ["nodejs_20", "pnpm"]
 
 [phases.install]
-cmds = ["npm install"]
+cmds = ["pnpm install"]
 
 [phases.build]
-cmds = ["npx prisma generate", "npm run build"]
+cmds = ["pnpm prisma generate", "pnpm build"]
 
 [start]
-cmd = "npx prisma db push --skip-generate && npx prisma db seed && npm start"
+cmd = "pnpm prisma db push --skip-generate && pnpm prisma db seed && pnpm start"
