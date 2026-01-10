@@ -150,6 +150,11 @@ pnpm dev
   - TOTP (Authenticator apps)
 - ✅ Password reset flow
 - ✅ Session management
+- ✅ Event-driven architecture for signal handling
+- ✅ Secure API endpoints with authentication
+- ✅ Scalable backend capabilities (Node.js / TypeScript)
+- ✅ Designed for real-world usage (not just demos)
+
 
 ### Subscription Management
 
