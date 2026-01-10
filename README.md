@@ -1,5 +1,12 @@
 # Signal Service Platform
 
+## Use Cases
+- Automated signal distribution between trading platforms and backend systems
+- AI-assisted automation workflows (e.g., filtering and routing signals)
+- Cross-platform integrations (APIs, webhooks, messaging, and analytics)
+- Foundation for workflow automation with Zapier, n8n, or custom orchestrators
+
+
 A comprehensive full-stack trading signal service with MQL5 integration, user authentication, OTP verification, subscription management, and real-time dashboard.
 
 ## 🏗️ Architecture Overview
