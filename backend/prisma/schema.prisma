@@ -8,7 +8,7 @@ datasource db {
 }
 
 model AccountSnapshot {
-  id           String     @id
+  id           String     @id @default(cuid())
   mt5AccountId String
   balance      Decimal    @db.Decimal(15, 2)
   equity       Decimal    @db.Decimal(15, 2)
@@ -16,8 +16,8 @@ model AccountSnapshot {
   peakEquity   Decimal    @db.Decimal(15, 2)
   snapshotDate DateTime   @db.Date
   createdAt    DateTime   @default(now())
-  updatedAt    DateTime
-  MT5Account   MT5Account @relation(fields: [mt5AccountId], references: [id], onDelete: Cascade)
+  updatedAt    DateTime   @updatedAt
+  mt5Account   MT5Account @relation(fields: [mt5AccountId], references: [id], onDelete: Cascade)
 
   @@unique([mt5AccountId, snapshotDate])
   @@index([mt5AccountId])
@@ -25,24 +25,24 @@ model AccountSnapshot {
 }
 
 model MT5Account {
-  id              String            @id
-  userId          String
-  accountId       String
-  accountType     MT5AccountType
-  broker          String?
-  server          String?
-  isConnected     Boolean           @default(false)
-  lastHeartbeat   DateTime?
-  balance         Decimal           @default(0) @db.Decimal(15, 2)
-  equity          Decimal           @default(0) @db.Decimal(15, 2)
-  profit          Decimal           @default(0) @db.Decimal(15, 2)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime
-  apiKey          String?           @unique
-  AccountSnapshot AccountSnapshot[]
-  User            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  Signal          Signal[]
-  SignalExecution SignalExecution[]
+  id               String            @id @default(cuid())
+  userId           String
+  accountId        String
+  accountType      MT5AccountType
+  broker           String?
+  server           String?
+  isConnected      Boolean           @default(false)
+  lastHeartbeat    DateTime?
+  balance          Decimal           @default(0) @db.Decimal(15, 2)
+  equity           Decimal           @default(0) @db.Decimal(15, 2)
+  profit           Decimal           @default(0) @db.Decimal(15, 2)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  apiKey           String?           @unique
+  accountSnapshots AccountSnapshot[]
+  user             User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  signals          Signal[]
+  executions       SignalExecution[]
 
   @@unique([userId, accountId])
   @@index([accountId])
@@ -50,7 +50,7 @@ model MT5Account {
 }
 
 model MonthlyReport {
-  id               String   @id
+  id               String   @id @default(cuid())
   userId           String
   year             Int
   month            Int
@@ -65,14 +65,14 @@ model MonthlyReport {
   endEquity        Decimal? @db.Decimal(15, 2)
   subscriptionTier String?
   generatedAt      DateTime @default(now())
-  User             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, year, month])
   @@index([userId])
 }
 
 model OTPToken {
-  id        String    @id
+  id        String    @id @default(cuid())
   userId    String
   code      String
   type      OTPType
@@ -81,14 +81,14 @@ model OTPToken {
   usedAt    DateTime?
   attempts  Int       @default(0)
   createdAt DateTime  @default(now())
-  User      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([code])
   @@index([userId, type])
 }
 
 model Payment {
-  id              String        @id
+  id              String        @id @default(cuid())
   userId          String
   amount          Decimal       @db.Decimal(10, 2)
   currency        String        @default("USD")
@@ -101,7 +101,7 @@ model Payment {
   failedAt        DateTime?
   refundedAt      DateTime?
   createdAt       DateTime      @default(now())
-  User            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@index([stripePaymentId])
@@ -109,7 +109,7 @@ model Payment {
 }
 
 model Session {
-  id           String   @id
+  id           String   @id @default(cuid())
   userId       String
   token        String   @unique
   refreshToken String?  @unique
@@ -117,32 +117,32 @@ model Session {
   ipAddress    String?
   expiresAt    DateTime
   createdAt    DateTime @default(now())
-  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
   @@index([userId])
 }
 
 model Signal {
-  id              String            @id
-  providerId      String
-  mt5AccountId    String?
-  action          SignalAction
-  symbol          String
-  type            TradeType
-  volume          Decimal           @db.Decimal(10, 2)
-  price           Decimal           @db.Decimal(15, 5)
-  sl              Decimal?          @db.Decimal(15, 5)
-  tp              Decimal?          @db.Decimal(15, 5)
-  masterTicket    BigInt?
-  comment         String?
-  magic           Int?
-  status          SignalStatus      @default(PENDING)
-  expiresAt       DateTime
-  createdAt       DateTime          @default(now())
-  MT5Account      MT5Account?       @relation(fields: [mt5AccountId], references: [id])
-  User            User              @relation(fields: [providerId], references: [id])
-  SignalExecution SignalExecution[]
+  id           String            @id @default(cuid())
+  providerId   String
+  mt5AccountId String?
+  action       SignalAction
+  symbol       String
+  type         TradeType
+  volume       Decimal           @db.Decimal(10, 2)
+  price        Decimal           @db.Decimal(15, 5)
+  sl           Decimal?          @db.Decimal(15, 5)
+  tp           Decimal?          @db.Decimal(15, 5)
+  masterTicket BigInt?
+  comment      String?
+  magic        Int?
+  status       SignalStatus      @default(PENDING)
+  expiresAt    DateTime
+  createdAt    DateTime          @default(now())
+  mt5Account   MT5Account?       @relation(fields: [mt5AccountId], references: [id])
+  provider     User              @relation(fields: [providerId], references: [id])
+  executions   SignalExecution[]
 
   @@index([createdAt])
   @@index([providerId])
@@ -151,7 +151,7 @@ model Signal {
 }
 
 model SignalExecution {
-  id             String          @id
+  id             String          @id @default(cuid())
   signalId       String
   userId         String
   mt5AccountId   String?
@@ -165,9 +165,9 @@ model SignalExecution {
   receivedAt     DateTime        @default(now())
   executedAt     DateTime?
   acknowledgedAt DateTime?
-  MT5Account     MT5Account?     @relation(fields: [mt5AccountId], references: [id])
-  Signal         Signal          @relation(fields: [signalId], references: [id], onDelete: Cascade)
-  User           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mt5Account     MT5Account?     @relation(fields: [mt5AccountId], references: [id])
+  signal         Signal          @relation(fields: [signalId], references: [id], onDelete: Cascade)
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([signalId, userId])
   @@index([status])
@@ -175,7 +175,7 @@ model SignalExecution {
 }
 
 model Subscription {
-  id                   String             @id
+  id                   String             @id @default(cuid())
   userId               String             @unique
   tierId               String
   status               SubscriptionStatus @default(ACTIVE)
@@ -189,9 +189,9 @@ model Subscription {
   trialStart           DateTime?
   trialEnd             DateTime?
   createdAt            DateTime           @default(now())
-  updatedAt            DateTime
-  SubscriptionTier     SubscriptionTier   @relation(fields: [tierId], references: [id])
-  User                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt            DateTime           @updatedAt
+  tier                 SubscriptionTier   @relation(fields: [tierId], references: [id])
+  user                 User               @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([currentPeriodEnd])
   @@index([status])
@@ -199,7 +199,7 @@ model Subscription {
 }
 
 model SubscriptionTier {
-  id                 String         @id
+  id                 String         @id @default(cuid())
   name               String         @unique
   displayName        String
   description        String?
@@ -216,14 +216,14 @@ model SubscriptionTier {
   sortOrder          Int            @default(0)
   isActive           Boolean        @default(true)
   createdAt          DateTime       @default(now())
-  updatedAt          DateTime
-  Subscription       Subscription[]
+  updatedAt          DateTime       @updatedAt
+  subscriptions      Subscription[]
 
   @@index([name])
 }
 
 model User {
-  id               String            @id
+  id               String            @id @default(cuid())
   email            String            @unique
   password         String
   name             String?
@@ -237,17 +237,17 @@ model User {
   status           UserStatus        @default(ACTIVE)
   role             UserRole          @default(USER)
   createdAt        DateTime          @default(now())
-  updatedAt        DateTime
+  updatedAt        DateTime          @updatedAt
   lastLoginAt      DateTime?
   lastLoginIp      String?
-  MT5Account       MT5Account[]
-  MonthlyReport    MonthlyReport[]
-  OTPToken         OTPToken[]
-  Payment          Payment[]
-  Session          Session[]
-  Signal           Signal[]
-  SignalExecution  SignalExecution[]
-  Subscription     Subscription?
+  mt5Accounts      MT5Account[]
+  monthlyReports   MonthlyReport[]
+  otpTokens        OTPToken[]
+  payments         Payment[]
+  sessions         Session[]
+  sentSignals      Signal[]
+  executions       SignalExecution[]
+  subscription     Subscription?
 
   @@index([email])
   @@index([status])
