@@ -163,16 +163,24 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
       });
     }
 
-    // Send verification email OTP
-    await sendEmailOTP(user.id, user.email, OTPType.EMAIL_VERIFICATION);
+    // Send verification email OTP (non-blocking - don't fail registration if email fails)
+    try {
+      await sendEmailOTP(user.id, user.email, OTPType.EMAIL_VERIFICATION);
+    } catch (emailError) {
+      console.error('Failed to send verification email (non-blocking):', emailError);
+    }
 
-    // Send welcome email
-    const welcomeEmail = emailTemplates.welcome(user.name || 'Trader');
-    await sendEmail({
-      to: user.email,
-      subject: welcomeEmail.subject,
-      html: welcomeEmail.html,
-    });
+    // Send welcome email (non-blocking)
+    try {
+      const welcomeEmail = emailTemplates.welcome(user.name || 'Trader');
+      await sendEmail({
+        to: user.email,
+        subject: welcomeEmail.subject,
+        html: welcomeEmail.html,
+      });
+    } catch (emailError) {
+      console.error('Failed to send welcome email (non-blocking):', emailError);
+    }
 
     return {
       success: true,
