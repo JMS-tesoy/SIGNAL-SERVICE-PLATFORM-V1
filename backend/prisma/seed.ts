@@ -5,6 +5,7 @@
 
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { v4 as uuidv4 } from 'uuid';
 
 const prisma = new PrismaClient();
 
@@ -15,8 +16,10 @@ async function main() {
   // SUBSCRIPTION TIERS
   // =============================================================================
 
+  const now = new Date();
   const tiers = [
     {
+      id: uuidv4(),
       name: 'free',
       displayName: 'Free',
       description: 'Get started with basic signal access',
@@ -36,8 +39,10 @@ async function main() {
       isPopular: false,
       sortOrder: 0,
       isActive: true,
+      updatedAt: now,
     },
     {
+      id: uuidv4(),
       name: 'basic',
       displayName: 'Basic',
       description: 'Perfect for individual traders',
@@ -60,8 +65,10 @@ async function main() {
       isPopular: false,
       sortOrder: 1,
       isActive: true,
+      updatedAt: now,
     },
     {
+      id: uuidv4(),
       name: 'pro',
       displayName: 'Pro',
       description: 'Best value for active traders',
@@ -85,8 +92,10 @@ async function main() {
       isPopular: true,
       sortOrder: 2,
       isActive: true,
+      updatedAt: now,
     },
     {
+      id: uuidv4(),
       name: 'premium',
       displayName: 'Premium',
       description: 'For professional trading operations',
@@ -112,6 +121,7 @@ async function main() {
       isPopular: false,
       sortOrder: 3,
       isActive: true,
+      updatedAt: now,
     },
   ];
 
@@ -135,6 +145,7 @@ async function main() {
     where: { email: adminEmail },
     update: {},
     create: {
+      id: uuidv4(),
       email: adminEmail,
       password: adminPassword,
       name: 'System Admin',
@@ -142,6 +153,7 @@ async function main() {
       status: 'ACTIVE',
       emailVerified: true,
       emailVerifiedAt: new Date(),
+      updatedAt: new Date(),
     },
   });
 
@@ -155,11 +167,13 @@ async function main() {
       where: { userId: adminUser.id },
       update: {},
       create: {
+        id: uuidv4(),
         userId: adminUser.id,
         tierId: freeTier.id,
         status: 'ACTIVE',
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+        updatedAt: new Date(),
       },
     });
   }
