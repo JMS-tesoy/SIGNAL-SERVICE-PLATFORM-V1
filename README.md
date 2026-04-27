@@ -253,7 +253,7 @@ pnpm dev
 
 ```env
 # Database
-DATABASE_URL="postgresql://user:pass@localhost:5432/signal_service"
+DATABASE_URL=
 
 # JWT
 JWT_SECRET="your-secret-key"
