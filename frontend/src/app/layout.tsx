@@ -6,7 +6,13 @@ export const metadata: Metadata = {
   title: 'Signal Service | Professional Trading Signals',
   description: 'Premium trading signals with real-time execution on MetaTrader 5',
   icons: {
-    icon: '/favicon.svg',
+    icon: [
+      {
+        url: '/favicon.svg',
+        type: 'image/svg+xml',
+      },
+    ],
+    shortcut: '/favicon.svg',
   },
 };
 
