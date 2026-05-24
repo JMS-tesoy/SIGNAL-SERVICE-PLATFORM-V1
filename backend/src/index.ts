@@ -2,6 +2,7 @@
 // SIGNAL SERVICE BACKEND - Main Application Entry Point
 // =============================================================================
 
+import "dotenv/config";
 import express, { Request, Response, NextFunction } from "express";
 import cors from "cors";
 import helmet from "helmet";
