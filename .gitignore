@@ -58,3 +58,5 @@ temp_login.json
 provider_login.json
 **/temp_login.json
 D*temp_login.json
+.vercel
+.env*.local
