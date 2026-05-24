@@ -168,7 +168,7 @@ const addMT5AccountSchema = z.object({
   accountId: z.string().min(1).max(50),
   accountType: z.enum(["MASTER", "SLAVE"]),
   broker: z.string().optional(),
-  server: z.string().optional(),
+  server: z.string().trim().min(1, "Server is required").max(100),
 });
 
 router.post(

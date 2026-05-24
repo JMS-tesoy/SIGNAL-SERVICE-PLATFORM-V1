@@ -86,12 +86,19 @@ export default function AccountsPage() {
     setActionLoading("add");
     setError("");
 
+    const server = newAccount.server.trim();
+    if (!server) {
+      setError("Server is required.");
+      setActionLoading(null);
+      return;
+    }
+
     try {
       const result = await userApi.addMT5Account(accessToken, {
-        accountId: newAccount.accountId,
+        accountId: newAccount.accountId.trim(),
         accountType: newAccount.accountType,
-        broker: newAccount.broker || undefined,
-        server: newAccount.server || undefined,
+        broker: newAccount.broker.trim() || undefined,
+        server,
       });
 
       if (result.error) {
@@ -377,7 +384,7 @@ export default function AccountsPage() {
 
                 <div>
                   <label className="block text-sm font-medium mb-2">
-                    Server (Optional)
+                    Server *
                   </label>
                   <input
                     type="text"
@@ -387,6 +394,7 @@ export default function AccountsPage() {
                     }
                     className="input"
                     placeholder="e.g., ICMarkets-Demo"
+                    required
                   />
                 </div>
 

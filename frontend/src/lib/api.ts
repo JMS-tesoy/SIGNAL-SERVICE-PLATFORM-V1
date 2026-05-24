@@ -305,7 +305,7 @@ export const userApi = {
     accountId: string;
     accountType: 'MASTER' | 'SLAVE';
     broker?: string;
-    server?: string;
+    server: string;
   }) =>
     apiFetch('/api/users/mt5-accounts', {
       method: 'POST',
