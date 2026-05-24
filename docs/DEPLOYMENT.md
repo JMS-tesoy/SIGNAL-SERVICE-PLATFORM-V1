@@ -151,6 +151,19 @@ Use exactly one of these deployment modes:
 | GitHub auto-deploy | Repository root | `frontend` | Push to `main` |
 | Vercel CLI deploy | `frontend` folder | blank / empty | `vercel --prod` |
 
+Why the Root Directory can look confusing:
+
+- An empty Root Directory can work when the deployment starts inside the `frontend` folder, such as a Vercel CLI deploy run from `frontend`.
+- An empty Root Directory fails when GitHub auto-deploy starts from the repository root, because the repository root has no `package.json`.
+- For this project, GitHub auto-deploy and CLI deploy are both valid, but their Root Directory settings are different.
+
+Quick rule:
+
+```txt
+GitHub auto-deploy from JMS-tesoy/SIGNAL-SERVICE-PLATFORM-V1 = Root Directory: frontend
+Manual Vercel CLI deploy from SIGNAL-SERVICE-PLATFORM-V1/frontend = Root Directory: blank / empty
+```
+
 Never run this from the repo root:
 
 ```powershell
