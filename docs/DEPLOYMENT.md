@@ -1,6 +1,11 @@
 # Deployment Runbook
 
-This guide covers deploying the Signal Service Platform to production environments.
+This guide covers the current split deployment for the Signal Service Platform:
+
+- Backend Express API: Railway
+- Frontend Next.js app: Vercel
+- Database: Railway PostgreSQL
+- Package manager: pnpm
 
 ## Architecture Overview
 
@@ -12,7 +17,7 @@ This guide covers deploying the Signal Service Platform to production environmen
 │   ┌──────────────┐     ┌──────────────┐     ┌──────────────┐       │
 │   │   Frontend   │     │   Backend    │     │  PostgreSQL  │       │
 │   │   (Next.js)  │────▶│  (Express)   │────▶│  (Railway)   │       │
-│   │   Railway    │     │   Railway    │     │              │       │
+│   │   Vercel     │     │   Railway    │     │              │       │
 │   └──────────────┘     └──────────────┘     └──────────────┘       │
 │         │                    │                                      │
 │         │              ┌─────┴─────┐                                │
@@ -30,7 +35,37 @@ This guide covers deploying the Signal Service Platform to production environmen
 
 ---
 
-## Railway Deployment
+## Split Deployment Rules
+
+This repository has two separate apps:
+
+```txt
+backend/    Express API for Railway
+frontend/   Next.js app for Vercel
+```
+
+The repo root does not have a `package.json`. Do not run app build/deploy commands from the repo root unless the command explicitly targets a subdirectory.
+
+Use these local commands:
+
+```powershell
+# Frontend build
+pnpm --dir frontend run build
+
+# Backend build
+pnpm --dir backend run build
+```
+
+For local frontend work:
+
+```powershell
+cd "D:\Documents\Website Project\SIGNAL-SERVICE-PLATFORM-V1\frontend"
+pnpm run dev
+```
+
+---
+
+## Railway Backend Deployment
 
 ### Prerequisites
 
@@ -50,8 +85,9 @@ This guide covers deploying the Signal Service Platform to production environmen
 2. Select your repository
 3. Configure:
    - **Root Directory**: `backend`
-   - **Build Command**: `npx prisma generate && npm run build`
-   - **Start Command**: `npx prisma db push --skip-generate && npx prisma db seed && npm start`
+   - **Build Command**: `pnpm prisma generate && pnpm build`
+   - **Start Command**: `pnpm prisma db push --skip-generate && pnpm prisma db seed && pnpm start`
+   - **Healthcheck Path**: `/health`
 
 4. Add Environment Variables:
 
@@ -81,31 +117,139 @@ STRIPE_PUBLISHABLE_KEY=pk_live_xxxxxxxx
 # App Config
 NODE_ENV=production
 PORT=3001
-FRONTEND_URL=https://your-frontend.railway.app
+FRONTEND_URL=https://your-frontend.vercel.app
+CORS_ORIGINS=https://your-frontend.vercel.app
+API_URL=https://your-backend.up.railway.app
 ```
 
 5. Deploy and note the backend URL (e.g., `https://your-backend.railway.app`)
 
-### Step 3: Deploy Frontend
+---
 
-1. In Railway, click **New** → **GitHub Repo**
-2. Select your repository
-3. Configure:
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npm start`
+## Vercel Frontend Deployment
 
-4. Add Environment Variables:
+The frontend can be deployed through GitHub or Vercel CLI. Do not mix the two while debugging.
+
+### Option A: GitHub Auto-Deploy
+
+Use this when Vercel is connected to GitHub and should deploy every push to `main`.
+
+1. In Vercel, open the frontend project.
+2. Go to **Settings** -> **Git**.
+3. Confirm:
+
+```txt
+Git Repository: JMS-tesoy/SIGNAL-SERVICE-PLATFORM-V1
+Production Branch: main
+```
+
+4. Go to **Settings** -> **Build and Deployment**.
+5. Configure:
+
+```txt
+Root Directory: frontend
+Framework Preset: Next.js
+Install Command: pnpm install
+Build Command: pnpm run build
+Output Directory: .next
+```
+
+6. Trigger deployment by pushing to GitHub:
+
+```powershell
+git commit --allow-empty -m "chore: trigger vercel github deploy"
+git push
+```
+
+The deployment source should show GitHub/main. It should not show `vercel deploy`.
+
+### Option B: Vercel CLI Deploy
+
+Use this when manually deploying from PowerShell.
+
+Important: run Vercel CLI from the `frontend` folder, not from the repo root.
+
+```powershell
+cd "D:\Documents\Website Project\SIGNAL-SERVICE-PLATFORM-V1\frontend"
+pnpm run build
+vercel --prod
+```
+
+For CLI deployments from inside `frontend`, Vercel settings should be:
+
+```txt
+Root Directory: blank / empty
+Framework Preset: Next.js
+Install Command: pnpm install
+Build Command: pnpm run build
+Output Directory: .next
+```
+
+If Vercel asks to link the folder:
+
+```txt
+Set up "...frontend"? yes
+Found project "frontend". Link to it? no
+Link to different existing project? yes
+Which existing project? signal-service-frontend-deploy
+Pull environment variables now? no
+```
+
+Choose `no` for pulling env vars unless you intentionally want Vercel CLI to overwrite `frontend/.env.local`.
+
+### Frontend Environment Variables
+
+Set these in Vercel **Settings** -> **Environment Variables**:
 
 ```env
 NEXT_PUBLIC_API_URL=https://your-backend.railway.app
 NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_xxxxxxxx
-NEXT_PUBLIC_APP_URL=https://your-frontend.railway.app
+NEXT_PUBLIC_APP_URL=https://your-frontend.vercel.app
 ```
 
-5. Deploy
+Do not define `NEXT_PUBLIC_API_URL` in `vercel.json` as `@api_url` unless that Vercel secret exists. Prefer normal project environment variables.
 
-### Step 4: Configure Stripe Webhook
+### Favicon Verification
+
+The favicon files are:
+
+```txt
+frontend/public/favicon.svg
+frontend/src/app/icon.svg
+```
+
+After deployment, test the actual deployment URL:
+
+```txt
+https://your-vercel-url.vercel.app/favicon.svg
+https://your-vercel-url.vercel.app/icon.svg
+```
+
+Expected result:
+
+```txt
+200 OK
+Content-Type: image/svg+xml
+```
+
+If localhost shows the favicon but Vercel does not:
+
+1. Confirm the deployment is not protected by Vercel Authentication.
+2. Confirm the deployment source includes `public/favicon.svg`.
+3. Confirm Vercel is building the correct folder.
+4. Open the site in incognito because browsers cache favicons aggressively.
+
+Common favicon/deployment mistakes:
+
+| Symptom | Likely Cause | Fix |
+|---------|--------------|-----|
+| `No Next.js version detected` | Vercel is building repo root | For GitHub deploy set Root Directory to `frontend`; for CLI deploy run from `frontend` and leave Root Directory blank |
+| `frontend/frontend does not exist` | Root Directory is `frontend` while CLI deploy is already inside `frontend` | Clear Root Directory or use GitHub auto-deploy |
+| `/favicon.svg` returns 404 | Deployed source does not include `frontend/public/favicon.svg` | Redeploy from latest GitHub commit or deploy CLI from correct folder |
+| Deployment returns 401 | Vercel Deployment Protection is enabled | Disable protection or use a public production domain |
+| `NEXT_PUBLIC_API_URL` references missing `api_url` | `vercel.json` points to a missing Vercel secret | Remove the `env` reference and set the env var in Vercel dashboard |
+
+## Stripe Webhook
 
 1. Go to Stripe Dashboard → Developers → Webhooks
 2. Add endpoint: `https://your-backend.railway.app/api/webhooks/stripe`
@@ -117,7 +261,7 @@ NEXT_PUBLIC_APP_URL=https://your-frontend.railway.app
    - `invoice.payment_failed`
 4. Copy the signing secret to `STRIPE_WEBHOOK_SECRET`
 
-### Step 5: Verify Deployment
+## Verify Deployment
 
 ```bash
 # Check backend health
@@ -171,8 +315,8 @@ curl -I https://your-frontend.railway.app
 
 The backend automatically runs on start:
 ```bash
-npx prisma db push --skip-generate  # Sync schema
-npx prisma db seed                   # Seed tiers & admin
+pnpm prisma db push --skip-generate  # Sync schema
+pnpm prisma db seed                   # Seed tiers & admin
 ```
 
 ### Manual Migrations
@@ -181,10 +325,10 @@ If you need to run migrations manually:
 
 ```bash
 # Generate migration
-npx prisma migrate dev --name your_migration_name
+pnpm prisma migrate dev --name your_migration_name
 
 # Apply to production
-npx prisma migrate deploy
+pnpm prisma migrate deploy
 ```
 
 ### Database Backup
@@ -291,14 +435,16 @@ psql $DATABASE_URL < backup.sql
 ### Debug Commands
 
 ```bash
-# Test backend locally against production DB
-DATABASE_URL="production-url" npm run dev
+# Test backend locally against production DB in PowerShell
+$env:DATABASE_URL="production-url"
+pnpm --dir backend run dev
 
 # Check Prisma schema sync
-npx prisma db pull
+pnpm --dir backend prisma db pull
 
 # Validate environment
-npm run build
+pnpm --dir frontend run build
+pnpm --dir backend run build
 ```
 
 ---
@@ -306,6 +452,7 @@ npm run build
 ## Support Resources
 
 - [Railway Documentation](https://docs.railway.app/)
+- [Vercel Documentation](https://vercel.com/docs)
 - [Prisma Deployment Guide](https://www.prisma.io/docs/guides/deployment)
 - [Next.js Deployment](https://nextjs.org/docs/deployment)
 - [Stripe Webhook Setup](https://stripe.com/docs/webhooks)
