@@ -14,9 +14,10 @@ import {
   X,
   Key,
   Copy,
+  Info,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
-import { userApi } from "@/lib/api";
+import { subscriptionApi, userApi } from "@/lib/api";
 
 // --- CONFIGURATION ---
 // Tries to find the correct backend URL from your environment variables
@@ -39,7 +40,7 @@ interface MT5Account {
 }
 
 export default function AccountsPage() {
-  const { accessToken } = useAuthStore();
+  const { accessToken, subscription, setSubscription } = useAuthStore();
   const [accounts, setAccounts] = useState<MT5Account[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -79,6 +80,21 @@ export default function AccountsPage() {
     fetchAccounts();
   }, [accessToken]);
 
+  useEffect(() => {
+    const fetchSubscription = async () => {
+      if (!accessToken || subscription) return;
+
+      const result = await subscriptionApi.getCurrent(accessToken);
+      if (result.data?.subscription) {
+        setSubscription(result.data.subscription);
+      }
+    };
+
+    fetchSubscription();
+  }, [accessToken, setSubscription, subscription]);
+
+  const isFreeAccount = !subscription || subscription.tier.name === "free";
+
   const handleAddAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accessToken) return;
@@ -89,6 +105,12 @@ export default function AccountsPage() {
     const server = newAccount.server.trim();
     if (!server) {
       setError("Server is required.");
+      setActionLoading(null);
+      return;
+    }
+
+    if (isFreeAccount && newAccount.accountType === "MASTER") {
+      setError("Master Signal Provider accounts require a paid plan.");
       setActionLoading(null);
       return;
     }
@@ -354,17 +376,30 @@ export default function AccountsPage() {
                   </label>
                   <select
                     value={newAccount.accountType}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      if (isFreeAccount && e.target.value === "MASTER") {
+                        setError("Master Signal Provider accounts require a paid plan.");
+                        return;
+                      }
+
                       setNewAccount({
                         ...newAccount,
                         accountType: e.target.value as "MASTER" | "SLAVE",
-                      })
-                    }
+                      });
+                    }}
                     className="input"
                   >
                     <option value="SLAVE">Slave (Signal Receiver)</option>
-                    <option value="MASTER">Master (Signal Provider)</option>
+                    <option value="MASTER" disabled={isFreeAccount}>
+                      Master (Signal Provider){isFreeAccount ? " - Paid plan required" : ""}
+                    </option>
                   </select>
+                  {isFreeAccount && (
+                    <p className="mt-2 flex items-start gap-2 text-xs text-foreground-muted">
+                      <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
+                      Master Signal Provider is visible for reference, but disabled on Free accounts. Upgrade to enable signal provider accounts.
+                    </p>
+                  )}
                 </div>
 
                 <div>

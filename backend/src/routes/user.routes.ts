@@ -177,13 +177,27 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const data = addMT5AccountSchema.parse(req.body);
 
+    const subscription = await prisma.subscription.findUnique({
+      where: { userId: req.user!.id },
+      include: { tier: true },
+    });
+
+    if (data.accountType === "MASTER") {
+      if (!subscription || subscription.status !== "ACTIVE") {
+        return res.status(403).json({
+          error: "An active paid subscription is required to add master accounts.",
+        });
+      }
+
+      if (subscription.tier.name === "free") {
+        return res.status(403).json({
+          error: "Master Signal Provider accounts require a paid plan.",
+        });
+      }
+    }
+
     // Check subscription limits for slave accounts
     if (data.accountType === "SLAVE") {
-      const subscription = await prisma.subscription.findUnique({
-        where: { userId: req.user!.id },
-        include: { tier: true },
-      });
-
       // Users without an active subscription cannot add SLAVE accounts
       if (!subscription || subscription.status !== "ACTIVE") {
         return res.status(403).json({
