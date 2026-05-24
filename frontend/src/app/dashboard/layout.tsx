@@ -26,6 +26,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { useAuthStore, useUIStore } from '@/lib/store';
+import { userApi } from '@/lib/api';
 import { ThemeToggle } from '@/components/ThemeToggle';
 
 const navItems = [
@@ -52,23 +53,64 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, isAuthenticated, logout, setLoading } = useAuthStore();
+  const { user, accessToken, isAuthenticated, isLoading, logout, setUser, setLoading } = useAuthStore();
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   useEffect(() => {
-    setLoading(false);
-    if (!isAuthenticated) {
+    let isMounted = true;
+
+    const hydrateUser = async () => {
+      if (isLoading) {
+        return;
+      }
+
+      if (!accessToken) {
+        setLoading(false);
+        router.push('/login');
+        return;
+      }
+
+      if (user?.avatar !== undefined) {
+        setLoading(false);
+        return;
+      }
+
+      const result = await userApi.getProfile(accessToken);
+
+      if (!isMounted) {
+        return;
+      }
+
+      if (result.data?.user) {
+        setUser(result.data.user);
+      } else {
+        logout();
+        router.push('/login');
+      }
+
+      setLoading(false);
+    };
+
+    hydrateUser();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [accessToken, isLoading, logout, router, setLoading, setUser, user?.avatar]);
+
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated && !accessToken) {
       router.push('/login');
     }
-  }, [isAuthenticated, router, setLoading]);
+  }, [accessToken, isAuthenticated, isLoading, router]);
 
   const handleLogout = () => {
     logout();
     router.push('/login');
   };
 
-  if (!isAuthenticated) {
+  if (isLoading || !isAuthenticated) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />

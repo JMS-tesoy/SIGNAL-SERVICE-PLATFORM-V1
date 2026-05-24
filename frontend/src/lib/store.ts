@@ -13,6 +13,7 @@ export interface User {
   id: string;
   email: string;
   name?: string;
+  phone?: string;
   role: string;
   emailVerified: boolean;
   twoFactorEnabled?: boolean;
@@ -65,10 +66,10 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: true,
 
-      setUser: (user) => set({ 
-        user, 
-        isAuthenticated: !!user 
-      }),
+      setUser: (user) => set((state) => ({
+        user,
+        isAuthenticated: !!user || !!state.accessToken,
+      })),
 
       setSubscription: (subscription) => set({ subscription }),
 
@@ -76,6 +77,7 @@ export const useAuthStore = create<AuthState>()(
         accessToken, 
         refreshToken,
         isAuthenticated: true,
+        isLoading: false,
       }),
 
       setLoading: (isLoading) => set({ isLoading }),
@@ -86,14 +88,26 @@ export const useAuthStore = create<AuthState>()(
         accessToken: null,
         refreshToken: null,
         isAuthenticated: false,
+        isLoading: false,
       }),
     }),
     {
       name: 'auth-storage',
       partialize: (state) => ({
+        user: state.user,
         accessToken: state.accessToken,
         refreshToken: state.refreshToken,
       }),
+      merge: (persistedState, currentState) => {
+        const persisted = persistedState as Partial<AuthState> | undefined;
+
+        return {
+          ...currentState,
+          ...persisted,
+          isAuthenticated: !!persisted?.accessToken,
+          isLoading: false,
+        };
+      },
     }
   )
 );

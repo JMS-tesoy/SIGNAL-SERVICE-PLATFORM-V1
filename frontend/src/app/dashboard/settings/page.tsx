@@ -52,11 +52,19 @@ export default function SettingsPage() {
     try {
       const result = await userApi.getProfile(accessToken);
       if (result.data?.user) {
+        const profileUser = result.data.user;
+
         setProfile({
-          name: result.data.user.name || '',
-          email: result.data.user.email,
-          phone: result.data.user.phone || '',
-          avatar: result.data.user.avatar || '',
+          name: profileUser.name || '',
+          email: profileUser.email,
+          phone: profileUser.phone || '',
+          avatar: profileUser.avatar || '',
+        });
+
+        setUser({
+          ...user,
+          ...profileUser,
+          avatar: profileUser.avatar || '',
         });
       }
     } catch (err) {
@@ -107,9 +115,11 @@ export default function SettingsPage() {
           setProfile(prev => ({ ...prev, avatar: '' }));
         } else {
           setMessage({ type: 'success', text: 'Avatar updated successfully' });
-          if (user) {
-            setUser({ ...user, avatar: base64 });
-          }
+          setUser({
+            ...user,
+            ...(result.data?.user || {}),
+            avatar: base64,
+          });
         }
         setIsUploadingAvatar(false);
       };
@@ -136,9 +146,11 @@ export default function SettingsPage() {
       } else {
         setProfile(prev => ({ ...prev, avatar: '' }));
         setMessage({ type: 'success', text: 'Avatar removed' });
-        if (user) {
-          setUser({ ...user, avatar: '' });
-        }
+        setUser({
+          ...user,
+          ...(result.data?.user || {}),
+          avatar: '',
+        });
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to remove avatar' });
@@ -176,9 +188,13 @@ export default function SettingsPage() {
         setMessage({ type: 'error', text: result.error });
       } else {
         setMessage({ type: 'success', text: 'Profile updated successfully' });
-        if (user) {
-          setUser({ ...user, name: profile.name });
-        }
+        setUser({
+          ...user,
+          ...(result.data?.user || {}),
+          name: profile.name,
+          phone: profile.phone,
+          avatar: profile.avatar,
+        });
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to update profile' });

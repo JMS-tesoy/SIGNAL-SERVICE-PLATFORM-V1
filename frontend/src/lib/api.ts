@@ -285,7 +285,7 @@ export const userApi = {
     apiFetch<{ user: any }>('/api/users/profile', { token }),
 
   updateProfile: (token: string, data: { name?: string; phone?: string; avatar?: string }) =>
-    apiFetch('/api/users/profile', {
+    apiFetch<{ user: any; message: string }>('/api/users/profile', {
       method: 'PUT',
       token,
       body: JSON.stringify(data),
