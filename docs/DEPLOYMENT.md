@@ -130,6 +130,48 @@ API_URL=https://your-backend.up.railway.app
 
 The frontend can be deployed through GitHub or Vercel CLI. Do not mix the two while debugging.
 
+### Read This First: Root Directory Rule
+
+This error means Vercel is building the wrong folder:
+
+```txt
+No Next.js version detected. Make sure your package.json has "next"...
+```
+
+The reason is almost always that Vercel cannot see:
+
+```txt
+frontend/package.json
+```
+
+Use exactly one of these deployment modes:
+
+| Deployment Mode | Where The Build Starts | Vercel Root Directory | Command |
+|-----------------|------------------------|------------------------|---------|
+| GitHub auto-deploy | Repository root | `frontend` | Push to `main` |
+| Vercel CLI deploy | `frontend` folder | blank / empty | `vercel --prod` |
+
+Never run this from the repo root:
+
+```powershell
+vercel --prod
+```
+
+Always run manual CLI production deploys like this:
+
+```powershell
+cd "D:\Documents\Website Project\SIGNAL-SERVICE-PLATFORM-V1\frontend"
+pnpm run build
+vercel --prod
+```
+
+If Vercel says `frontend/frontend does not exist`, your Vercel Root Directory is still set to `frontend` while you are deploying from inside `frontend`. Clear the Root Directory for CLI deploys.
+
+If Vercel says `No Next.js version detected`, either:
+
+- you ran `vercel --prod` from the repo root, or
+- the project Root Directory is wrong for the deployment mode you are using.
+
 ### Option A: GitHub Auto-Deploy
 
 Use this when Vercel is connected to GitHub and should deploy every push to `main`.
@@ -167,7 +209,7 @@ The deployment source should show GitHub/main. It should not show `vercel deploy
 
 Use this when manually deploying from PowerShell.
 
-Important: run Vercel CLI from the `frontend` folder, not from the repo root.
+Important: run Vercel CLI from the `frontend` folder, not from the repo root. If you already linked the wrong folder, delete the local `.vercel` folder in the wrong location and link again from `frontend`.
 
 ```powershell
 cd "D:\Documents\Website Project\SIGNAL-SERVICE-PLATFORM-V1\frontend"
@@ -196,6 +238,14 @@ Pull environment variables now? no
 ```
 
 Choose `no` for pulling env vars unless you intentionally want Vercel CLI to overwrite `frontend/.env.local`.
+
+If Vercel tries to link to a project named `frontend`, choose `no` and select the real project:
+
+```txt
+signal-service-frontend-deploy
+```
+
+If the CLI says a secret such as `@api_url` is missing, remove that secret reference from `frontend/vercel.json` and set `NEXT_PUBLIC_API_URL` in the Vercel dashboard instead.
 
 ### Frontend Environment Variables
 
