@@ -176,7 +176,7 @@ export default function DownloadsPage() {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
-                className="card"
+                className={`card relative ${isReceiverEA && showBrokerDropdown ? 'z-30' : 'z-0'}`}
               >
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
@@ -230,7 +230,7 @@ export default function DownloadsPage() {
                       </button>
 
                       {showBrokerDropdown && (
-                        <div className="absolute z-50 w-full sm:w-80 mt-2 py-2 bg-background-card border border-border rounded-xl shadow-xl max-h-64 overflow-y-auto">
+                        <div className="absolute z-50 w-full sm:w-80 mt-2 max-h-64 overflow-y-auto rounded-xl border border-border bg-background-secondary py-2 shadow-2xl shadow-black/40 ring-1 ring-white/5">
                           {BROKERS.map((broker) => (
                             <button
                               key={broker.id}
