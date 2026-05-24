@@ -137,13 +137,15 @@ export async function sendEmailOTP(
 
     const template = templates[type];
 
-    // Log OTP code for development/testing
-    console.log('\n========================================');
-    console.log(`📧 OTP CODE for ${email}`);
-    console.log(`   Type: ${type}`);
-    console.log(`   Code: ${code}`);
-    console.log(`   Expires: ${expiresAt.toLocaleString()}`);
-    console.log('========================================\n');
+    // Log OTP code only for local development/testing.
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('\n========================================');
+      console.log(`Email OTP CODE for ${email}`);
+      console.log(`   Type: ${type}`);
+      console.log(`   Code: ${code}`);
+      console.log(`   Expires: ${expiresAt.toLocaleString()}`);
+      console.log('========================================\n');
+    }
 
     // Send email
     try {

@@ -22,7 +22,13 @@ interface EmailOptions {
 const getResendClient = () => {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.warn('RESEND_API_KEY not configured - emails will not be sent');
+    const message = 'RESEND_API_KEY not configured - emails will not be sent';
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(message);
+    }
+
+    console.warn(message);
     return null;
   }
   return new Resend(apiKey);
@@ -33,16 +39,16 @@ const getResendClient = () => {
 // =============================================================================
 
 export async function sendEmail(options: EmailOptions): Promise<void> {
-  const resend = getResendClient();
-
-  if (!resend) {
-    console.log(`[DEV MODE] Email would be sent to ${options.to}: ${options.subject}`);
-    return;
-  }
-
-  const fromEmail = process.env.EMAIL_FROM || 'Signal Service <onboarding@resend.dev>';
-
   try {
+    const resend = getResendClient();
+
+    if (!resend) {
+      console.log(`[DEV MODE] Email would be sent to ${options.to}: ${options.subject}`);
+      return;
+    }
+
+    const fromEmail = process.env.EMAIL_FROM || 'Signal Service <onboarding@resend.dev>';
+
     const { error } = await resend.emails.send({
       from: fromEmail,
       to: options.to,
