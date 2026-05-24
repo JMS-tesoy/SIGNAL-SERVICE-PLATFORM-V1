@@ -1,23 +1,34 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { motion } from 'framer-motion';
-import { TrendingUp, Mail, Lock, User, Eye, EyeOff, ArrowRight, Loader2, Check, CheckCircle } from 'lucide-react';
-import { authApi } from '@/lib/api';
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  CheckCircle,
+  Eye,
+  EyeOff,
+  Loader2,
+  Lock,
+  Mail,
+  User,
+} from "lucide-react";
+import { authApi } from "@/lib/api";
+import { AuthError, AuthFooterLink, AuthShell } from "@/components/AuthShell";
 
 export default function RegisterPage() {
   const router = useRouter();
 
-  const [step, setStep] = useState<'register' | 'success' | 'verify'>('register');
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [step, setStep] = useState<"register" | "success" | "verify">("register");
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [error, setError] = useState('');
+  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const passwordStrength = () => {
@@ -32,15 +43,15 @@ export default function RegisterPage() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError("Passwords do not match");
       return;
     }
 
     if (password.length < 8) {
-      setError('Password must be at least 8 characters');
+      setError("Password must be at least 8 characters");
       return;
     }
 
@@ -54,9 +65,9 @@ export default function RegisterPage() {
         return;
       }
 
-      setStep('success');
+      setStep("success");
     } catch (err) {
-      setError('Registration failed. Please try again.');
+      setError("Registration failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
@@ -64,31 +75,29 @@ export default function RegisterPage() {
 
   const handleOtpChange = (index: number, value: string) => {
     if (value.length > 1) return;
-    
+
     const newOtp = [...otp];
     newOtp[index] = value;
     setOtp(newOtp);
 
     if (value && index < 5) {
-      const nextInput = document.getElementById(`otp-${index + 1}`);
-      nextInput?.focus();
+      document.getElementById(`otp-${index + 1}`)?.focus();
     }
   };
 
   const handleOtpKeyDown = (index: number, e: React.KeyboardEvent) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      const prevInput = document.getElementById(`otp-${index - 1}`);
-      prevInput?.focus();
+    if (e.key === "Backspace" && !otp[index] && index > 0) {
+      document.getElementById(`otp-${index - 1}`)?.focus();
     }
   };
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
 
-    const code = otp.join('');
+    const code = otp.join("");
     if (code.length !== 6) {
-      setError('Please enter all 6 digits');
+      setError("Please enter all 6 digits");
       return;
     }
 
@@ -102,16 +111,16 @@ export default function RegisterPage() {
         return;
       }
 
-      router.push('/login?verified=true');
+      router.push("/login?verified=true");
     } catch (err) {
-      setError('Verification failed. Please try again.');
+      setError("Verification failed. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleResendCode = async () => {
-    setError('');
+    setError("");
     setIsLoading(true);
 
     try {
@@ -122,274 +131,253 @@ export default function RegisterPage() {
         return;
       }
 
-      setOtp(['', '', '', '', '', '']);
-      // Show success message briefly
-      setError('');
+      setOtp(["", "", "", "", "", ""]);
+      setError("");
     } catch (err) {
-      setError('Failed to resend code. Please try again.');
+      setError("Failed to resend code. Please try again.");
     } finally {
       setIsLoading(false);
     }
   };
 
   const strength = passwordStrength();
-  const strengthColors = ['bg-accent-red', 'bg-accent-red', 'bg-accent-yellow', 'bg-accent-yellow', 'bg-accent-green'];
-  const strengthLabels = ['Very Weak', 'Weak', 'Fair', 'Good', 'Strong'];
+  const strengthColors = [
+    "bg-accent-red",
+    "bg-accent-red",
+    "bg-accent-yellow",
+    "bg-accent-yellow",
+    "bg-accent-green",
+  ];
+  const strengthLabels = ["Very weak", "Weak", "Fair", "Good", "Strong"];
+
+  const title =
+    step === "register"
+      ? "Create your account"
+      : step === "success"
+        ? "Check your inbox"
+        : "Verify your email";
+
+  const description =
+    step === "register"
+      ? "Start your SignalService workspace with secure access to trading signals and MT5 account tools."
+      : step === "success"
+        ? "We sent a verification code so you can protect your account from the start."
+        : `Enter the 6-digit code sent to ${email}.`;
 
   return (
-    <div className="min-h-screen bg-background bg-mesh flex items-center justify-center px-6 py-12">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
-      >
-        <Link href="/" className="flex items-center justify-center gap-2 mb-8">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center">
-            <TrendingUp className="w-7 h-7 text-white" />
+    <AuthShell
+      eyebrow="New account"
+      title={title}
+      description={description}
+      footer={<AuthFooterLink label="Already have an account?" href="/login" action="Sign in" />}
+    >
+      {step === "register" ? (
+        <form onSubmit={handleRegister} className="space-y-5">
+          <AuthError message={error} />
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2 sm:col-span-2">
+              <label className="text-sm font-medium" htmlFor="name">
+                Name <span className="text-foreground-subtle">(optional)</span>
+              </label>
+              <div className="relative">
+                <User className="auth-input-icon" />
+                <input
+                  id="name"
+                  type="text"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="auth-input-with-left-icon"
+                  placeholder="John Doe"
+                  autoComplete="name"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <label className="text-sm font-medium" htmlFor="email">
+                Email
+              </label>
+              <div className="relative">
+                <Mail className="auth-input-icon" />
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="auth-input-with-left-icon"
+                  placeholder="you@example.com"
+                  autoComplete="email"
+                  required
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <label className="text-sm font-medium" htmlFor="password">
+                Password
+              </label>
+              <div className="relative">
+                <Lock className="auth-input-icon" />
+                <input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="auth-input-with-icons"
+                  placeholder="Create a strong password"
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground-subtle transition hover:text-foreground"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+
+              {password && (
+                <div className="rounded-lg border border-border bg-background/60 p-3">
+                  <div className="mb-2 flex gap-1">
+                    {[0, 1, 2, 3, 4].map((i) => (
+                      <div
+                        key={i}
+                        className={`h-1.5 flex-1 rounded-full transition-colors ${
+                          i < strength ? strengthColors[strength - 1] : "bg-border"
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-foreground-muted">
+                    Password strength: {strengthLabels[strength - 1] || "Very weak"}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-2 sm:col-span-2">
+              <label className="text-sm font-medium" htmlFor="confirmPassword">
+                Confirm password
+              </label>
+              <div className="relative">
+                <Lock className="auth-input-icon" />
+                <input
+                  id="confirmPassword"
+                  type={showPassword ? "text" : "password"}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="auth-input-with-icons"
+                  placeholder="Repeat your password"
+                  autoComplete="new-password"
+                  required
+                />
+                {confirmPassword && password === confirmPassword && (
+                  <Check className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-accent-green" />
+                )}
+              </div>
+            </div>
           </div>
-          <span className="text-2xl font-bold text-gradient">SignalService</span>
-        </Link>
 
-        <div className="card-elevated">
-          {step === 'register' ? (
-            <>
-              <h1 className="text-2xl font-bold text-center mb-2">Create Account</h1>
-              <p className="text-foreground-muted text-center mb-8">
-                Start receiving professional trading signals
-              </p>
-
-              <form onSubmit={handleRegister} className="space-y-5">
-                {error && (
-                  <div className="p-4 bg-accent-red/10 border border-accent-red/20 rounded-lg text-accent-red text-sm">
-                    {error}
-                  </div>
-                )}
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Name (Optional)</label>
-                  <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground-subtle" />
-                    <input
-                      type="text"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      className="input pl-12"
-                      placeholder="John Doe"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Email</label>
-                  <div className="relative">
-                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground-subtle" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="input pl-12"
-                      placeholder="you@example.com"
-                      required
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground-subtle" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="input pl-12 pr-12"
-                      placeholder="••••••••"
-                      required
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground-subtle hover:text-foreground"
-                    >
-                      {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                    </button>
-                  </div>
-                  
-                  {password && (
-                    <div className="mt-3">
-                      <div className="flex gap-1 mb-1">
-                        {[0, 1, 2, 3, 4].map((i) => (
-                          <div
-                            key={i}
-                            className={`h-1 flex-1 rounded-full transition-colors ${
-                              i < strength ? strengthColors[strength - 1] : 'bg-border'
-                            }`}
-                          />
-                        ))}
-                      </div>
-                      <p className="text-xs text-foreground-muted">
-                        Password strength: {strengthLabels[strength - 1] || 'Very Weak'}
-                      </p>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium mb-2">Confirm Password</label>
-                  <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-foreground-subtle" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="input pl-12"
-                      placeholder="••••••••"
-                      required
-                    />
-                    {confirmPassword && password === confirmPassword && (
-                      <Check className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-accent-green" />
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-start gap-2">
-                  <input 
-                    type="checkbox" 
-                    id="terms"
-                    className="w-4 h-4 mt-1 rounded border-border bg-background-secondary" 
-                    required
-                  />
-                  <label htmlFor="terms" className="text-sm text-foreground-muted">
-                    I agree to the{' '}
-                    <a href="#" className="text-primary hover:underline">Terms of Service</a>
-                    {' '}and{' '}
-                    <a href="#" className="text-primary hover:underline">Privacy Policy</a>
-                  </label>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full btn-primary py-3 flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <>
-                      Create Account
-                      <ArrowRight className="w-5 h-5" />
-                    </>
-                  )}
-                </button>
-              </form>
-            </>
-          ) : step === 'success' ? (
-            <>
-              <div className="text-center py-4">
-                <div className="w-16 h-16 rounded-full bg-accent-green/10 flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle className="w-8 h-8 text-accent-green" />
-                </div>
-                <h1 className="text-2xl font-bold mb-2">Account Created!</h1>
-                <p className="text-foreground-muted mb-2">
-                  We've sent a verification code to
-                </p>
-                <p className="text-foreground font-medium mb-6">{email}</p>
-                <p className="text-foreground-muted text-sm mb-8">
-                  Please check your inbox and enter the 6-digit code to verify your email address.
-                </p>
-                <button
-                  onClick={() => setStep('verify')}
-                  className="w-full btn-primary py-3 flex items-center justify-center gap-2"
-                >
-                  Enter Verification Code
-                  <ArrowRight className="w-5 h-5" />
-                </button>
-                <button
-                  onClick={() => router.push('/login')}
-                  className="w-full mt-3 text-foreground-muted hover:text-foreground text-sm"
-                >
-                  I'll verify later
-                </button>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-center mb-8">
-                <div className="w-16 h-16 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4">
-                  <Mail className="w-8 h-8 text-primary" />
-                </div>
-                <h1 className="text-2xl font-bold mb-2">Enter Verification Code</h1>
-                <p className="text-foreground-muted">
-                  Enter the 6-digit code sent to<br />
-                  <span className="text-foreground font-medium">{email}</span>
-                </p>
-              </div>
-
-              <form onSubmit={handleVerify} className="space-y-6">
-                {error && (
-                  <div className="p-4 bg-accent-red/10 border border-accent-red/20 rounded-lg text-accent-red text-sm">
-                    {error}
-                  </div>
-                )}
-
-                <div className="flex justify-center gap-3">
-                  {otp.map((digit, i) => (
-                    <input
-                      key={i}
-                      id={`otp-${i}`}
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={1}
-                      value={digit}
-                      onChange={(e) => handleOtpChange(i, e.target.value.replace(/\D/g, ''))}
-                      onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                      className="otp-input"
-                      autoFocus={i === 0}
-                    />
-                  ))}
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full btn-primary py-3 flex items-center justify-center gap-2"
-                >
-                  {isLoading ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <>
-                      Verify Email
-                      <ArrowRight className="w-5 h-5" />
-                    </>
-                  )}
-                </button>
-
-                <p className="text-center text-foreground-muted text-sm">
-                  Didn't receive the code?{' '}
-                  <button
-                    type="button"
-                    onClick={handleResendCode}
-                    disabled={isLoading}
-                    className="text-primary hover:underline disabled:opacity-50"
-                  >
-                    Resend
-                  </button>
-                </p>
-              </form>
-            </>
-          )}
-
-          <div className="mt-8 pt-6 border-t border-border text-center">
-            <p className="text-foreground-muted">
-              Already have an account?{' '}
-              <Link href="/login" className="text-primary hover:underline font-medium">
-                Sign in
+          <label className="flex items-start gap-3 rounded-lg border border-border bg-background/60 p-3 text-sm text-foreground-muted">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4 rounded border-border bg-background-secondary"
+              required
+            />
+            <span>
+              I agree to the{" "}
+              <Link href="/terms" className="font-medium text-primary hover:underline">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" className="font-medium text-primary hover:underline">
+                Privacy Policy
               </Link>
-            </p>
+            </span>
+          </label>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="btn-primary flex w-full items-center justify-center gap-2 py-3"
+          >
+            {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Create account<ArrowRight className="h-5 w-5" /></>}
+          </button>
+        </form>
+      ) : step === "success" ? (
+        <div className="text-center">
+          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-accent-green/10">
+            <CheckCircle className="h-8 w-8 text-accent-green" />
           </div>
+          <p className="mb-6 rounded-lg border border-border bg-background/60 px-4 py-3 text-sm text-foreground-muted">
+            Verification code sent to <span className="font-medium text-foreground">{email}</span>
+          </p>
+          <button
+            onClick={() => setStep("verify")}
+            className="btn-primary flex w-full items-center justify-center gap-2 py-3"
+          >
+            Enter verification code
+            <ArrowRight className="h-5 w-5" />
+          </button>
+          <button
+            onClick={() => router.push("/login")}
+            className="mt-4 w-full text-sm text-foreground-muted transition hover:text-foreground"
+          >
+            I will verify later
+          </button>
         </div>
-      </motion.div>
-    </div>
+      ) : (
+        <form onSubmit={handleVerify} className="space-y-6">
+          <AuthError message={error} />
+
+          <div className="grid grid-cols-6 gap-2 sm:gap-3">
+            {otp.map((digit, i) => (
+              <input
+                key={i}
+                id={`otp-${i}`}
+                type="text"
+                inputMode="numeric"
+                maxLength={1}
+                value={digit}
+                onChange={(e) => handleOtpChange(i, e.target.value.replace(/\D/g, ""))}
+                onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                className="otp-input w-full"
+                autoFocus={i === 0}
+              />
+            ))}
+          </div>
+
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="btn-primary flex w-full items-center justify-center gap-2 py-3"
+          >
+            {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Verify email<ArrowRight className="h-5 w-5" /></>}
+          </button>
+
+          <div className="flex flex-col gap-3 text-center text-sm sm:flex-row sm:items-center sm:justify-between">
+            <button
+              type="button"
+              onClick={() => setStep("success")}
+              className="inline-flex items-center justify-center gap-2 text-foreground-muted transition hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back
+            </button>
+            <button
+              type="button"
+              onClick={handleResendCode}
+              disabled={isLoading}
+              className="font-medium text-primary hover:underline disabled:opacity-50"
+            >
+              Resend code
+            </button>
+          </div>
+        </form>
+      )}
+    </AuthShell>
   );
 }

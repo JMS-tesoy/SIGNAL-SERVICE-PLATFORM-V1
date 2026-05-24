@@ -362,9 +362,9 @@ export default function HomePage() {
             © 2024 SignalService. All rights reserved.
           </p>
           <div className="flex items-center gap-6">
-            <a href="#" className="text-foreground-muted hover:text-foreground text-sm">Privacy</a>
-            <a href="#" className="text-foreground-muted hover:text-foreground text-sm">Terms</a>
-            <a href="#" className="text-foreground-muted hover:text-foreground text-sm">Contact</a>
+            <Link href="/privacy" className="text-foreground-muted hover:text-foreground text-sm">Privacy</Link>
+            <Link href="/terms" className="text-foreground-muted hover:text-foreground text-sm">Terms</Link>
+            <Link href="/contact" className="text-foreground-muted hover:text-foreground text-sm">Contact</Link>
           </div>
         </div>
       </footer>
