@@ -4,6 +4,7 @@
 
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../services/auth.service.js';
+import { hashMt5ApiKey, isHashedMt5ApiKey } from '../utils/api-key.js';
 import prisma from '../config/database.js';
 
 // Extend Express Request type
@@ -34,8 +35,15 @@ async function authenticateWithApiKey(apiKey: string): Promise<{
   user: { id: string; email: string; role: string };
   mt5Account: { id: string; accountId: string; accountType: string; userId: string };
 } | null> {
-  const mt5Account = await prisma.mT5Account.findUnique({
-    where: { apiKey },
+  const hashedApiKey = hashMt5ApiKey(apiKey);
+  const mt5Account = await prisma.mT5Account.findFirst({
+    where: {
+      OR: [
+        { apiKey: hashedApiKey },
+        // Backward compatibility for keys generated before hashing was added.
+        { apiKey },
+      ],
+    },
     include: {
       user: {
         select: { id: true, email: true, role: true, status: true },
@@ -49,6 +57,13 @@ async function authenticateWithApiKey(apiKey: string): Promise<{
 
   if (mt5Account.user.status === 'BANNED' || mt5Account.user.status === 'SUSPENDED') {
     return null;
+  }
+
+  if (mt5Account.apiKey && !isHashedMt5ApiKey(mt5Account.apiKey)) {
+    await prisma.mT5Account.update({
+      where: { id: mt5Account.id },
+      data: { apiKey: hashedApiKey },
+    });
   }
 
   return {

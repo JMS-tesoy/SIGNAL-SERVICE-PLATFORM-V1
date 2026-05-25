@@ -280,6 +280,27 @@ export const signalApi = {
 // USER API
 // =============================================================================
 
+export interface MT5AccountResponse {
+  id: string;
+  accountId: string;
+  accountType: 'MASTER' | 'SLAVE';
+  broker: string | null;
+  server: string | null;
+  isConnected: boolean;
+  lastHeartbeat: string | null;
+  hasApiKey: boolean;
+  balance: number | null;
+  equity: number | null;
+  profit: number | null;
+}
+
+export interface MT5PlanUsageResponse {
+  currentSlaveAccounts: number;
+  maxSlaveAccounts: number;
+  subscriptionStatus: string | null;
+  tierName: string | null;
+}
+
 export const userApi = {
   getProfile: (token: string) =>
     apiFetch<{ user: any }>('/api/users/profile', { token }),
@@ -299,7 +320,10 @@ export const userApi = {
     }),
 
   getMT5Accounts: (token: string) =>
-    apiFetch<{ accounts: any[] }>('/api/users/mt5-accounts', { token }),
+    apiFetch<{ accounts: MT5AccountResponse[]; planUsage: MT5PlanUsageResponse }>(
+      '/api/users/mt5-accounts',
+      { token }
+    ),
 
   addMT5Account: (token: string, data: {
     accountId: string;
@@ -318,6 +342,24 @@ export const userApi = {
       method: 'DELETE',
       token,
     }),
+
+  generateMT5ApiKey: (token: string, accountId: string) =>
+    apiFetch<{ apiKey: string; message: string }>(
+      `/api/users/mt5-accounts/${accountId}/api-key`,
+      {
+        method: 'POST',
+        token,
+      }
+    ),
+
+  revokeMT5ApiKey: (token: string, accountId: string) =>
+    apiFetch<{ message: string }>(
+      `/api/users/mt5-accounts/${accountId}/api-key`,
+      {
+        method: 'DELETE',
+        token,
+      }
+    ),
 
   getSessions: (token: string) =>
     apiFetch<{ sessions: any[] }>('/api/users/sessions', { token }),

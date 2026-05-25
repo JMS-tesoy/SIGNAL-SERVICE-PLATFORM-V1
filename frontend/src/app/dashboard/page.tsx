@@ -110,9 +110,9 @@ interface MT5Account {
   accountId: string;
   accountType: string;
   isConnected: boolean;
-  balance: number;
-  equity: number;
-  profit: number;
+  balance: number | null;
+  equity: number | null;
+  profit: number | null;
 }
 
 function AccountCard({ account }: { account: MT5Account }) {
@@ -127,8 +127,8 @@ function AccountCard({ account }: { account: MT5Account }) {
       </div>
       <div className="text-right">
         <p className="font-mono">${account.balance?.toFixed(2) || '0.00'}</p>
-        <p className={`text-sm ${account.profit >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>
-          {account.profit >= 0 ? '+' : ''}{account.profit?.toFixed(2) || '0.00'}
+        <p className={`text-sm ${(account.profit ?? 0) >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>
+          {(account.profit ?? 0) >= 0 ? '+' : ''}{account.profit?.toFixed(2) || '0.00'}
         </p>
       </div>
     </div>

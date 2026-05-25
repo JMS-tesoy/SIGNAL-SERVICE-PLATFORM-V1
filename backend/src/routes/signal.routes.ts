@@ -17,18 +17,30 @@ import { asyncHandler } from '../middleware/error.middleware.js';
 
 const router = Router();
 
+function resolveRequestedAccountId(req: Request, res: Response, requestedAccountId?: string): string | null {
+  const accountId = requestedAccountId || req.accountId;
+
+  if (!accountId || accountId.trim() === '') {
+    res.status(400).json({ error: 'account_id is required' });
+    return null;
+  }
+
+  if (req.mt5Account && accountId !== req.mt5Account.accountId) {
+    res.status(403).json({ error: 'API key is not authorized for this MT5 account' });
+    return null;
+  }
+
+  return accountId;
+}
+
 // =============================================================================
 // RECEIVE SIGNAL FROM SENDER EA
 // =============================================================================
 
 router.post('/', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const { type, action, data, account_id } = req.body;
-  const accountId = account_id || req.accountId;
-
-  // Require explicit account_id for all signal operations
-  if (!accountId || accountId.trim() === '') {
-    return res.status(400).json({ error: 'account_id is required' });
-  }
+  const accountId = resolveRequestedAccountId(req, res, account_id);
+  if (!accountId) return;
 
   // Handle different message types
   if (type === 'HEARTBEAT') {
@@ -79,11 +91,8 @@ router.post('/', authenticate, asyncHandler(async (req: Request, res: Response) 
 
 router.post('/heartbeat', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const { account_id, data } = req.body;
-  const accountId = account_id || req.accountId;
-
-  if (!accountId || accountId.trim() === '') {
-    return res.status(400).json({ error: 'account_id is required' });
-  }
+  const accountId = resolveRequestedAccountId(req, res, account_id);
+  if (!accountId) return;
 
   const result = await updateHeartbeat(req.user!.id, accountId, {
     balance: data?.balance,
@@ -99,12 +108,8 @@ router.post('/heartbeat', authenticate, asyncHandler(async (req: Request, res: R
 // =============================================================================
 
 router.get('/pending', authenticate, requireActiveSubscription, asyncHandler(async (req: Request, res: Response) => {
-  const accountId = (req.query.account_id as string) || req.accountId;
-
-  // Require explicit account_id - no silent defaults
-  if (!accountId || accountId.trim() === '') {
-    return res.status(400).json({ error: 'account_id is required' });
-  }
+  const accountId = resolveRequestedAccountId(req, res, req.query.account_id as string);
+  if (!accountId) return;
 
   const result = await getPendingSignals(req.user!.id, accountId);
 
@@ -127,14 +132,20 @@ router.post('/ack', authenticate, asyncHandler(async (req: Request, res: Respons
     return res.status(400).json({ error: 'signal_id and status required' });
   }
 
-  const result = await acknowledgeExecution(signal_id, req.user!.id, status, {
-    executedVolume: executed_volume,
-    executedPrice: executed_price,
-    slippage: slippage,
-    slaveTicket: slave_ticket,
-    errorCode: error_code,
-    errorMessage: error_message,
-  });
+  const result = await acknowledgeExecution(
+    signal_id,
+    req.user!.id,
+    status,
+    {
+      executedVolume: executed_volume,
+      executedPrice: executed_price,
+      slippage: slippage,
+      slaveTicket: slave_ticket,
+      errorCode: error_code,
+      errorMessage: error_message,
+    },
+    req.mt5Account?.id
+  );
 
   res.json(result);
 }));

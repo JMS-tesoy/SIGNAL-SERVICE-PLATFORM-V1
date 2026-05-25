@@ -218,12 +218,13 @@ export async function acknowledgeExecution(
     slaveTicket?: number;
     errorCode?: number;
     errorMessage?: string;
-  }
+  },
+  mt5AccountId?: string
 ): Promise<SignalResult> {
   try {
     // Check current execution state first (idempotency check)
     const existing = await prisma.signalExecution.findFirst({
-      where: { id: executionId, userId },
+      where: { id: executionId, userId, ...(mt5AccountId ? { mt5AccountId } : {}) },
     });
 
     if (!existing) {
@@ -251,6 +252,7 @@ export async function acknowledgeExecution(
       where: {
         id: executionId,
         userId,
+        ...(mt5AccountId ? { mt5AccountId } : {}),
         status: 'PENDING', // Only update if still PENDING
       },
       data: {
@@ -269,7 +271,7 @@ export async function acknowledgeExecution(
     // If no rows updated, another request already processed it
     if (result.count === 0) {
       const current = await prisma.signalExecution.findFirst({
-        where: { id: executionId, userId },
+        where: { id: executionId, userId, ...(mt5AccountId ? { mt5AccountId } : {}) },
         select: { status: true },
       });
       return {

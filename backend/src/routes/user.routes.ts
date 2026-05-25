@@ -4,12 +4,16 @@
 
 import { Router, Request, Response } from "express";
 import { z } from "zod";
-import crypto from "crypto";
 import { authenticate } from "../middleware/auth.middleware.js";
 import { asyncHandler } from "../middleware/error.middleware.js";
 import { hashPassword, comparePassword } from "../services/auth.service.js";
 import { notifyPasswordChanged } from "../services/notification.service.js";
 import { strongPasswordSchema } from "../utils/password-policy.js";
+import {
+  generateMt5ApiKey,
+  hashMt5ApiKey,
+  isHashedMt5ApiKey,
+} from "../utils/api-key.js";
 import prisma from "../config/database.js";
 
 const router = Router();
@@ -236,10 +240,30 @@ router.get(
   "/mt5-accounts",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const accounts = await prisma.mT5Account.findMany({
-      where: { userId: req.user!.id },
-      orderBy: { createdAt: "desc" },
-    });
+    const [accounts, subscription, currentSlaveCount] = await Promise.all([
+      prisma.mT5Account.findMany({
+        where: { userId: req.user!.id },
+        orderBy: { createdAt: "desc" },
+      }),
+      prisma.subscription.findUnique({
+        where: { userId: req.user!.id },
+        include: { tier: true },
+      }),
+      prisma.mT5Account.count({
+        where: { userId: req.user!.id, accountType: "SLAVE" },
+      }),
+    ]);
+
+    await Promise.all(
+      accounts
+        .filter((account) => account.apiKey && !isHashedMt5ApiKey(account.apiKey))
+        .map((account) =>
+          prisma.mT5Account.update({
+            where: { id: account.id },
+            data: { apiKey: hashMt5ApiKey(account.apiKey!) },
+          })
+        )
+    );
 
     res.json({
       accounts: accounts.map((a) => ({
@@ -250,10 +274,17 @@ router.get(
         server: a.server,
         isConnected: a.isConnected,
         lastHeartbeat: a.lastHeartbeat,
+        hasApiKey: Boolean(a.apiKey),
         balance: a.balance ? Number(a.balance) : null,
         equity: a.equity ? Number(a.equity) : null,
         profit: a.profit ? Number(a.profit) : null,
       })),
+      planUsage: {
+        currentSlaveAccounts: currentSlaveCount,
+        maxSlaveAccounts: subscription?.tier.maxSlaveAccounts ?? 0,
+        subscriptionStatus: subscription?.status ?? null,
+        tierName: subscription?.tier.name ?? null,
+      },
     });
   })
 );
@@ -277,12 +308,11 @@ router.post(
       return res.status(404).json({ error: "Account not found" });
     }
 
-    // Generate a secure API key (32 bytes = 64 hex chars)
-    const apiKey = `mt5_${crypto.randomBytes(32).toString("hex")}`;
+    const apiKey = generateMt5ApiKey();
 
     await prisma.mT5Account.update({
       where: { id: accountId },
-      data: { apiKey },
+      data: { apiKey: hashMt5ApiKey(apiKey) },
     });
 
     res.json({
