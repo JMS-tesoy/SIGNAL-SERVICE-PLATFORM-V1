@@ -56,11 +56,15 @@ function LoginContent() {
   const [tempToken, setTempToken] = useState("");
   const [twoFactorMethod, setTwoFactorMethod] = useState("");
   const [error, setError] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setStatusMessage("");
     setIsLoading(true);
 
     try {
@@ -108,6 +112,7 @@ function LoginContent() {
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setStatusMessage("");
     setIsLoading(true);
 
     const code = otp.join("");
@@ -135,6 +140,44 @@ function LoginContent() {
       setError("Verification failed. Please try again.");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const canResendCode = twoFactorMethod === "EMAIL" || twoFactorMethod === "SMS";
+
+  const handleResendCode = async () => {
+    if (!tempToken || !canResendCode || isResending || resendCooldown > 0) return;
+
+    setError("");
+    setStatusMessage("");
+    setIsResending(true);
+
+    try {
+      const result = await authApi.resend2FA(tempToken);
+
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+
+      setOtp(["", "", "", "", "", ""]);
+      setStatusMessage(result.data?.message || "A new verification code was sent.");
+      setResendCooldown(30);
+
+      const interval = window.setInterval(() => {
+        setResendCooldown((current) => {
+          if (current <= 1) {
+            window.clearInterval(interval);
+            return 0;
+          }
+
+          return current - 1;
+        });
+      }, 1000);
+    } catch {
+      setError("Failed to resend verification code. Please try again.");
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -234,6 +277,14 @@ function LoginContent() {
       ) : (
         <form onSubmit={handleVerifyOtp} className="space-y-6">
           <AuthError message={error} />
+          {statusMessage && (
+            <div className="rounded-lg border border-accent-green/25 bg-accent-green/10 px-4 py-3 text-sm text-accent-green">
+              <div className="flex items-start gap-2">
+                <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>{statusMessage}</span>
+              </div>
+            </div>
+          )}
 
           <div className="rounded-lg border border-primary/20 bg-primary/10 p-4 text-sm text-foreground-muted">
             <div className="mb-1 flex items-center gap-2 font-medium text-foreground">
@@ -268,12 +319,33 @@ function LoginContent() {
             {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Verify<ArrowRight className="h-5 w-5" /></>}
           </button>
 
+          {canResendCode && (
+            <button
+              type="button"
+              onClick={handleResendCode}
+              disabled={isResending || resendCooldown > 0}
+              className="flex w-full items-center justify-center gap-2 text-sm font-medium text-primary transition hover:text-primary-hover disabled:cursor-not-allowed disabled:text-foreground-subtle"
+            >
+              {isResending ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Sending new code...
+                </>
+              ) : resendCooldown > 0 ? (
+                `Resend code in ${resendCooldown}s`
+              ) : (
+                "Resend code"
+              )}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {
               setStep("credentials");
               setOtp(["", "", "", "", "", ""]);
               setError("");
+              setStatusMessage("");
             }}
             className="flex w-full items-center justify-center gap-2 text-sm text-foreground-muted transition hover:text-foreground"
           >

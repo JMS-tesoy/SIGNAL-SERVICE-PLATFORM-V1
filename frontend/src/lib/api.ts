@@ -98,6 +98,12 @@ export const authApi = {
       body: JSON.stringify({ tempToken, code, method }),
     }),
 
+  resend2FA: (tempToken: string) =>
+    apiFetch<{ message: string; twoFactorMethod?: string }>('/api/auth/resend-2fa', {
+      method: 'POST',
+      body: JSON.stringify({ tempToken }),
+    }),
+
   refreshToken: (refreshToken: string) =>
     apiFetch<{ accessToken: string }>('/api/auth/refresh', {
       method: 'POST',

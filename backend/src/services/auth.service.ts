@@ -6,7 +6,7 @@ import jwt, { SignOptions } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../config/database.js';
-import { sendEmailOTP, verifyOTP, verifyTOTP } from './otp.service.js';
+import { sendEmailOTP, sendSMSOTP, verifyOTP, verifyTOTP } from './otp.service.js';
 import { sendEmail, emailTemplates } from './email.service.js';
 import { notifyNewLogin, notifyPasswordChanged } from './notification.service.js';
 import { User, OTPType, TwoFactorMethod } from '@prisma/client';
@@ -428,6 +428,87 @@ export async function verifyTwoFactorAndLogin(
     return {
       success: false,
       message: 'Verification failed. Please try again.',
+    };
+  }
+}
+
+// =============================================================================
+// RESEND 2FA OTP
+// =============================================================================
+
+export async function resendTwoFactorOTP(
+  tempToken: string
+): Promise<{ success: boolean; message: string; twoFactorMethod?: TwoFactorMethod }> {
+  try {
+    const payload = verifyToken(tempToken);
+    if (!payload || payload.type !== 'temp') {
+      return {
+        success: false,
+        message: 'Invalid or expired session. Please login again.',
+      };
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: {
+        id: true,
+        email: true,
+        phone: true,
+        twoFactorEnabled: true,
+        twoFactorMethod: true,
+        status: true,
+      },
+    });
+
+    if (!user || user.status === 'BANNED' || user.status === 'SUSPENDED') {
+      return {
+        success: false,
+        message: 'Account is not active.',
+      };
+    }
+
+    if (!user.twoFactorEnabled) {
+      return {
+        success: false,
+        message: 'Two-factor authentication is not enabled.',
+      };
+    }
+
+    if (user.twoFactorMethod === 'EMAIL') {
+      await sendEmailOTP(user.id, user.email, OTPType.TWO_FACTOR_LOGIN);
+      return {
+        success: true,
+        message: 'A new verification code was sent to your email.',
+        twoFactorMethod: user.twoFactorMethod,
+      };
+    }
+
+    if (user.twoFactorMethod === 'SMS') {
+      if (!user.phone) {
+        return {
+          success: false,
+          message: 'No phone number is configured for this account.',
+        };
+      }
+
+      await sendSMSOTP(user.id, user.phone, OTPType.TWO_FACTOR_LOGIN);
+      return {
+        success: true,
+        message: 'A new verification code was sent to your phone.',
+        twoFactorMethod: user.twoFactorMethod,
+      };
+    }
+
+    return {
+      success: false,
+      message: 'Use your authenticator app to get a current code.',
+      twoFactorMethod: user.twoFactorMethod,
+    };
+  } catch (error) {
+    console.error('Resend 2FA OTP error:', error);
+    return {
+      success: false,
+      message: 'Failed to resend verification code. Please try again.',
     };
   }
 }

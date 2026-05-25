@@ -8,6 +8,7 @@ import {
   register,
   login,
   verifyTwoFactorAndLogin,
+  resendTwoFactorOTP,
   refreshAccessToken,
   logout,
   requestPasswordReset,
@@ -42,6 +43,10 @@ const twoFactorSchema = z.object({
   code: z.string().length(6, 'Code must be 6 digits'),
   method: z.enum(['EMAIL', 'SMS', 'TOTP']),
   rememberMe: z.boolean().optional().default(false),
+});
+
+const resendTwoFactorSchema = z.object({
+  tempToken: z.string(),
 });
 
 const resetPasswordSchema = z.object({
@@ -120,6 +125,21 @@ router.post('/verify-2fa', asyncHandler(async (req: Request, res: Response) => {
     user: result.user,
     accessToken: result.accessToken,
     refreshToken: result.refreshToken,
+  });
+}));
+
+// Resend 2FA OTP
+router.post('/resend-2fa', asyncHandler(async (req: Request, res: Response) => {
+  const data = resendTwoFactorSchema.parse(req.body);
+  const result = await resendTwoFactorOTP(data.tempToken);
+
+  if (!result.success) {
+    return res.status(400).json({ error: result.message });
+  }
+
+  res.json({
+    message: result.message,
+    twoFactorMethod: result.twoFactorMethod,
   });
 }));
 
