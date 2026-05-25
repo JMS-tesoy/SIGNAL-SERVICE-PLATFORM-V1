@@ -49,8 +49,9 @@ coverage/
 # Windows reserved names
 nul
 
-EA's/SignalSenderEA.mq5
-EA's/SignalReceiverEA.mq5
+# EA source files are private/local only.
+EA's/*.mq5
+EA's/*.mqh
 
 CLAUDE_STATE.md
 
