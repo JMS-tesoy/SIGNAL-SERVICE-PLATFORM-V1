@@ -51,7 +51,36 @@ interface TokenPayload {
 // JWT CONFIGURATION
 // =============================================================================
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-change-in-production';
+const MIN_JWT_SECRET_LENGTH = 32;
+
+function getRequiredJwtSecret(): string {
+  const secret = process.env.JWT_SECRET?.trim();
+
+  if (!secret) {
+    throw new Error(
+      'JWT_SECRET is required. Set a random secret with at least 32 characters.'
+    );
+  }
+
+  if (secret.length < MIN_JWT_SECRET_LENGTH) {
+    throw new Error(
+      `JWT_SECRET must be at least ${MIN_JWT_SECRET_LENGTH} characters long.`
+    );
+  }
+
+  const placeholderSecrets = new Set([
+    'your-secret-key',
+    'your-super-secret-jwt-key-change-in-production',
+  ]);
+
+  if (process.env.NODE_ENV === 'production' && placeholderSecrets.has(secret)) {
+    throw new Error('JWT_SECRET must not use a placeholder value in production.');
+  }
+
+  return secret;
+}
+
+const JWT_SECRET = getRequiredJwtSecret();
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 const REFRESH_TOKEN_EXPIRES_IN = process.env.REFRESH_TOKEN_EXPIRES_IN || '7d';
 const REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN = process.env.REMEMBER_ME_REFRESH_TOKEN_EXPIRES_IN || '30d';

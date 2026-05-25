@@ -256,7 +256,7 @@ pnpm dev
 DATABASE_URL=
 
 # JWT
-JWT_SECRET="your-secret-key"
+JWT_SECRET="replace-with-a-random-secret-at-least-32-chars"
 JWT_EXPIRES_IN="1h"
 REFRESH_TOKEN_EXPIRES_IN="7d"
 

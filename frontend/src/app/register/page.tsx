@@ -18,32 +18,44 @@ import {
 import { authApi } from "@/lib/api";
 import { AuthError, AuthFooterLink, AuthShell } from "@/components/AuthShell";
 
+type RegisterStep = "register" | "verify";
+
+const emptyOtp = ["", "", "", "", "", ""];
+
 export default function RegisterPage() {
   const router = useRouter();
 
-  const [step, setStep] = useState<"register" | "success" | "verify">("register");
+  const [step, setStep] = useState<RegisterStep>("register");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [registeredEmail, setRegisteredEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [otp, setOtp] = useState(emptyOtp);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  const passwordStrength = () => {
-    let strength = 0;
-    if (password.length >= 8) strength++;
-    if (/[A-Z]/.test(password)) strength++;
-    if (/[a-z]/.test(password)) strength++;
-    if (/[0-9]/.test(password)) strength++;
-    if (/[^A-Za-z0-9]/.test(password)) strength++;
-    return strength;
-  };
+  const normalizedEmail = email.trim().toLowerCase();
+  const verificationEmail = registeredEmail || normalizedEmail;
+
+  const passwordChecks = [
+    { label: "At least 8 characters", passed: password.length >= 8 },
+    { label: "One uppercase letter", passed: /[A-Z]/.test(password) },
+    { label: "One lowercase letter", passed: /[a-z]/.test(password) },
+    { label: "One number", passed: /[0-9]/.test(password) },
+    { label: "One symbol", passed: /[^A-Za-z0-9]/.test(password) },
+  ];
+
+  const strength = passwordChecks.filter((check) => check.passed).length;
+  const passwordsMatch = Boolean(confirmPassword) && password === confirmPassword;
+  const canSubmitRegister = Boolean(normalizedEmail) && password.length >= 8 && passwordsMatch && !isLoading;
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setNotice("");
 
     if (password !== confirmPassword) {
       setError("Passwords do not match");
@@ -58,14 +70,17 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      const result = await authApi.register(email, password, name);
+      const result = await authApi.register(normalizedEmail, password, name.trim() || undefined);
 
       if (result.error) {
         setError(result.error);
         return;
       }
 
-      setStep("success");
+      setRegisteredEmail(normalizedEmail);
+      setOtp(emptyOtp);
+      setNotice("Account created. Enter the verification code we sent to your email.");
+      setStep("verify");
     } catch (err) {
       setError("Registration failed. Please try again.");
     } finally {
@@ -91,9 +106,23 @@ export default function RegisterPage() {
     }
   };
 
+  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    e.preventDefault();
+    const pastedCode = e.clipboardData.getData("text").replace(/\D/g, "").slice(0, 6);
+
+    if (!pastedCode) return;
+
+    const nextOtp = emptyOtp.map((_, index) => pastedCode[index] || "");
+    setOtp(nextOtp);
+
+    const nextFocusIndex = Math.min(pastedCode.length, 5);
+    document.getElementById(`otp-${nextFocusIndex}`)?.focus();
+  };
+
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setNotice("");
 
     const code = otp.join("");
     if (code.length !== 6) {
@@ -104,7 +133,7 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      const result = await authApi.verifyEmail(email, code);
+      const result = await authApi.verifyEmail(verificationEmail, code);
 
       if (result.error) {
         setError(result.error);
@@ -121,18 +150,19 @@ export default function RegisterPage() {
 
   const handleResendCode = async () => {
     setError("");
+    setNotice("");
     setIsLoading(true);
 
     try {
-      const result = await authApi.resendVerification(email);
+      const result = await authApi.resendVerification(verificationEmail);
 
       if (result.error) {
         setError(result.error);
         return;
       }
 
-      setOtp(["", "", "", "", "", ""]);
-      setError("");
+      setOtp(emptyOtp);
+      setNotice("A new verification code was sent.");
     } catch (err) {
       setError("Failed to resend code. Please try again.");
     } finally {
@@ -140,7 +170,6 @@ export default function RegisterPage() {
     }
   };
 
-  const strength = passwordStrength();
   const strengthColors = [
     "bg-accent-red",
     "bg-accent-red",
@@ -153,16 +182,12 @@ export default function RegisterPage() {
   const title =
     step === "register"
       ? "Create your account"
-      : step === "success"
-        ? "Check your inbox"
-        : "Verify your email";
+      : "Verify your email";
 
   const description =
     step === "register"
       ? "Start your SignalService workspace with secure access to trading signals and MT5 account tools."
-      : step === "success"
-        ? "We sent a verification code so you can protect your account from the start."
-        : `Enter the 6-digit code sent to ${email}.`;
+      : `Enter the 6-digit code sent to ${verificationEmail}.`;
 
   return (
     <AuthShell
@@ -254,6 +279,19 @@ export default function RegisterPage() {
                   <p className="text-xs text-foreground-muted">
                     Password strength: {strengthLabels[strength - 1] || "Very weak"}
                   </p>
+                  <div className="mt-3 grid gap-2 text-xs text-foreground-muted sm:grid-cols-2">
+                    {passwordChecks.map((check) => (
+                      <div
+                        key={check.label}
+                        className={`flex items-center gap-2 ${
+                          check.passed ? "text-accent-green" : "text-foreground-muted"
+                        }`}
+                      >
+                        <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span>{check.label}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -274,10 +312,13 @@ export default function RegisterPage() {
                   autoComplete="new-password"
                   required
                 />
-                {confirmPassword && password === confirmPassword && (
+                {passwordsMatch && (
                   <Check className="absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-accent-green" />
                 )}
               </div>
+              {confirmPassword && !passwordsMatch && (
+                <p className="text-xs text-accent-red">Passwords do not match yet.</p>
+              )}
             </div>
           </div>
 
@@ -301,37 +342,24 @@ export default function RegisterPage() {
 
           <button
             type="submit"
-            disabled={isLoading}
+            disabled={!canSubmitRegister}
             className="btn-primary flex w-full items-center justify-center gap-2 py-3"
           >
             {isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : <>Create account<ArrowRight className="h-5 w-5" /></>}
           </button>
         </form>
-      ) : step === "success" ? (
-        <div className="text-center">
-          <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-accent-green/10">
-            <CheckCircle className="h-8 w-8 text-accent-green" />
-          </div>
-          <p className="mb-6 rounded-lg border border-border bg-background/60 px-4 py-3 text-sm text-foreground-muted">
-            Verification code sent to <span className="font-medium text-foreground">{email}</span>
-          </p>
-          <button
-            onClick={() => setStep("verify")}
-            className="btn-primary flex w-full items-center justify-center gap-2 py-3"
-          >
-            Enter verification code
-            <ArrowRight className="h-5 w-5" />
-          </button>
-          <button
-            onClick={() => router.push("/login")}
-            className="mt-4 w-full text-sm text-foreground-muted transition hover:text-foreground"
-          >
-            I will verify later
-          </button>
-        </div>
       ) : (
         <form onSubmit={handleVerify} className="space-y-6">
           <AuthError message={error} />
+          {notice && (
+            <div className="rounded-lg border border-accent-green/25 bg-accent-green/10 px-4 py-3 text-sm text-accent-green">
+              {notice}
+            </div>
+          )}
+
+          <div className="rounded-lg border border-border bg-background/60 px-4 py-3 text-sm text-foreground-muted">
+            Code sent to <span className="font-medium text-foreground">{verificationEmail}</span>
+          </div>
 
           <div className="grid grid-cols-6 gap-2 sm:gap-3">
             {otp.map((digit, i) => (
@@ -344,8 +372,10 @@ export default function RegisterPage() {
                 value={digit}
                 onChange={(e) => handleOtpChange(i, e.target.value.replace(/\D/g, ""))}
                 onKeyDown={(e) => handleOtpKeyDown(i, e)}
+                onPaste={i === 0 ? handleOtpPaste : undefined}
                 className="otp-input w-full"
                 autoFocus={i === 0}
+                aria-label={`Verification digit ${i + 1}`}
               />
             ))}
           </div>
@@ -361,11 +391,16 @@ export default function RegisterPage() {
           <div className="flex flex-col gap-3 text-center text-sm sm:flex-row sm:items-center sm:justify-between">
             <button
               type="button"
-              onClick={() => setStep("success")}
+              onClick={() => {
+                setStep("register");
+                setOtp(emptyOtp);
+                setError("");
+                setNotice("");
+              }}
               className="inline-flex items-center justify-center gap-2 text-foreground-muted transition hover:text-foreground"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back
+              Edit account details
             </button>
             <button
               type="button"

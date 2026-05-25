@@ -71,11 +71,6 @@ export default function DashboardLayout({
         return;
       }
 
-      if (user?.avatar !== undefined) {
-        setLoading(false);
-        return;
-      }
-
       const result = await userApi.getProfile(accessToken);
 
       if (!isMounted) {
@@ -97,7 +92,7 @@ export default function DashboardLayout({
     return () => {
       isMounted = false;
     };
-  }, [accessToken, isLoading, logout, router, setLoading, setUser, user?.avatar]);
+  }, [accessToken, isLoading, logout, router, setLoading, setUser]);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !accessToken) {
