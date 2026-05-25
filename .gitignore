@@ -11,6 +11,9 @@ build/
 .next/
 out/
 
+# Documentation drafts/local docs
+docs/
+
 # Environment files
 .env
 .env.local
