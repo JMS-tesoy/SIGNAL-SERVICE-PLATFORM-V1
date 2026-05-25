@@ -32,13 +32,27 @@ export default function SettingsPage() {
     new: '',
     confirm: '',
   });
-  const [showPasswords, setShowPasswords] = useState(false);
+  const [visiblePasswordFields, setVisiblePasswordFields] = useState({
+    current: false,
+    new: false,
+    confirm: false,
+  });
   const [sessions, setSessions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+
+  const passwordChecks = [
+    { label: 'At least 8 characters', passed: passwords.new.length >= 8 },
+    { label: 'One uppercase letter', passed: /[A-Z]/.test(passwords.new) },
+    { label: 'One lowercase letter', passed: /[a-z]/.test(passwords.new) },
+    { label: 'One number', passed: /[0-9]/.test(passwords.new) },
+    { label: 'One symbol', passed: /[^A-Za-z0-9]/.test(passwords.new) },
+  ];
+  const newPasswordIsStrong = passwordChecks.every((check) => check.passed);
+  const newPasswordsMatch = Boolean(passwords.confirm) && passwords.new === passwords.confirm;
 
   useEffect(() => {
     fetchProfile();
@@ -212,8 +226,11 @@ export default function SettingsPage() {
       return;
     }
 
-    if (passwords.new.length < 8) {
-      setMessage({ type: 'error', text: 'Password must be at least 8 characters' });
+    if (!newPasswordIsStrong) {
+      setMessage({
+        type: 'error',
+        text: 'Password must include uppercase, lowercase, number, and symbol.',
+      });
       return;
     }
 
@@ -228,6 +245,7 @@ export default function SettingsPage() {
       } else {
         setMessage({ type: 'success', text: 'Password changed successfully' });
         setPasswords({ current: '', new: '', confirm: '' });
+        setVisiblePasswordFields({ current: false, new: false, confirm: false });
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to change password' });
@@ -247,6 +265,13 @@ export default function SettingsPage() {
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to revoke sessions' });
     }
+  };
+
+  const togglePasswordVisibility = (field: keyof typeof visiblePasswordFields) => {
+    setVisiblePasswordFields((current) => ({
+      ...current,
+      [field]: !current[field],
+    }));
   };
 
   if (isLoading) {
@@ -412,46 +437,88 @@ export default function SettingsPage() {
             <label className="block text-xs sm:text-sm font-medium mb-2">Current Password</label>
             <div className="relative">
               <input
-                type={showPasswords ? 'text' : 'password'}
+                type={visiblePasswordFields.current ? 'text' : 'password'}
                 value={passwords.current}
                 onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-                className="input pr-12"
-                placeholder="••••••••"
+                className="input pr-12 text-sm"
+                placeholder="Enter current password"
+                autoComplete="current-password"
                 required
               />
               <button
                 type="button"
-                onClick={() => setShowPasswords(!showPasswords)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-foreground-subtle hover:text-foreground"
+                onClick={() => togglePasswordVisibility('current')}
+                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-foreground-subtle transition hover:bg-background-elevated hover:text-foreground"
+                aria-label={visiblePasswordFields.current ? 'Hide current password' : 'Show current password'}
               >
-                {showPasswords ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                {visiblePasswordFields.current ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
               </button>
             </div>
           </div>
 
           <div>
             <label className="block text-xs sm:text-sm font-medium mb-2">New Password</label>
-            <input
-              type={showPasswords ? 'text' : 'password'}
-              value={passwords.new}
-              onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
-              className="input text-sm"
-              placeholder="••••••••"
-              required
-              minLength={8}
-            />
+            <div className="relative">
+              <input
+                type={visiblePasswordFields.new ? 'text' : 'password'}
+                value={passwords.new}
+                onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+                className="input pr-12 text-sm"
+                placeholder="Create a strong password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+              />
+              <button
+                type="button"
+                onClick={() => togglePasswordVisibility('new')}
+                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-foreground-subtle transition hover:bg-background-elevated hover:text-foreground"
+                aria-label={visiblePasswordFields.new ? 'Hide new password' : 'Show new password'}
+              >
+                {visiblePasswordFields.new ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+            {passwords.new && (
+              <div className="mt-3 grid gap-2 rounded-lg border border-border bg-background/60 p-3 text-xs text-foreground-muted sm:grid-cols-2">
+                {passwordChecks.map((check) => (
+                  <div
+                    key={check.label}
+                    className={`flex items-center gap-2 ${
+                      check.passed ? 'text-accent-green' : 'text-foreground-muted'
+                    }`}
+                  >
+                    <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>{check.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
             <label className="block text-xs sm:text-sm font-medium mb-2">Confirm New Password</label>
-            <input
-              type={showPasswords ? 'text' : 'password'}
-              value={passwords.confirm}
-              onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-              className="input text-sm"
-              placeholder="••••••••"
-              required
-            />
+            <div className="relative">
+              <input
+                type={visiblePasswordFields.confirm ? 'text' : 'password'}
+                value={passwords.confirm}
+                onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                className="input pr-12 text-sm"
+                placeholder="Repeat new password"
+                autoComplete="new-password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => togglePasswordVisibility('confirm')}
+                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-foreground-subtle transition hover:bg-background-elevated hover:text-foreground"
+                aria-label={visiblePasswordFields.confirm ? 'Hide confirm password' : 'Show confirm password'}
+              >
+                {visiblePasswordFields.confirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+            {passwords.confirm && !newPasswordsMatch && (
+              <p className="mt-2 text-xs text-accent-red">New passwords do not match yet.</p>
+            )}
           </div>
 
           <button

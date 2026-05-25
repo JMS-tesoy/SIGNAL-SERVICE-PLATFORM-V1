@@ -1,11 +1,13 @@
 "use client";
 
+import { Suspense } from "react";
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   ArrowRight,
+  CheckCircle,
   Eye,
   EyeOff,
   Loader2,
@@ -18,8 +20,33 @@ import { useAuthStore } from "@/lib/store";
 import { AuthError, AuthFooterLink, AuthShell } from "@/components/AuthShell";
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<LoginShellFallback />}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginShellFallback() {
+  return (
+    <AuthShell
+      eyebrow="Secure sign in"
+      title="Welcome back"
+      description="Access your trading dashboard, signal history, MT5 accounts, and subscription tools."
+      footer={<AuthFooterLink label="Don't have an account?" href="/register" action="Create one" />}
+    >
+      <div className="flex min-h-[280px] items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    </AuthShell>
+  );
+}
+
+function LoginContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { setUser, setTokens } = useAuthStore();
+  const isVerifiedRedirect = searchParams.get("verified") === "true";
 
   const [step, setStep] = useState<"credentials" | "otp">("credentials");
   const [email, setEmail] = useState("");
@@ -126,6 +153,15 @@ export default function LoginPage() {
     >
       {step === "credentials" ? (
         <form onSubmit={handleLogin} className="space-y-5">
+          {isVerifiedRedirect && (
+            <div className="rounded-lg border border-accent-green/25 bg-accent-green/10 px-4 py-3 text-sm text-accent-green">
+              <div className="flex items-start gap-2">
+                <CheckCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                <span>Email verified. You can now sign in.</span>
+              </div>
+            </div>
+          )}
+
           <AuthError message={error} />
 
           <div className="space-y-2">

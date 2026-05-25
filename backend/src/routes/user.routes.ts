@@ -9,6 +9,7 @@ import { authenticate } from "../middleware/auth.middleware.js";
 import { asyncHandler } from "../middleware/error.middleware.js";
 import { hashPassword, comparePassword } from "../services/auth.service.js";
 import { notifyPasswordChanged } from "../services/notification.service.js";
+import { strongPasswordSchema } from "../utils/password-policy.js";
 import prisma from "../config/database.js";
 
 const router = Router();
@@ -99,7 +100,7 @@ router.put(
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
-  newPassword: z.string().min(8),
+  newPassword: strongPasswordSchema,
 });
 
 router.put(

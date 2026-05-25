@@ -17,6 +17,7 @@ import {
 } from '../services/auth.service.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { asyncHandler } from '../middleware/error.middleware.js';
+import { strongPasswordSchema } from '../utils/password-policy.js';
 
 const router = Router();
 
@@ -26,7 +27,7 @@ const router = Router();
 
 const registerSchema = z.object({
   email: z.string().email('Invalid email address'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
+  password: strongPasswordSchema,
   name: z.string().optional(),
 });
 
@@ -46,7 +47,7 @@ const twoFactorSchema = z.object({
 const resetPasswordSchema = z.object({
   email: z.string().email(),
   code: z.string().length(6),
-  newPassword: z.string().min(8),
+  newPassword: strongPasswordSchema,
 });
 
 // =============================================================================

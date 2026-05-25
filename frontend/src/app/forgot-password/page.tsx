@@ -31,6 +31,16 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
+  const passwordChecks = [
+    { label: "At least 8 characters", passed: newPassword.length >= 8 },
+    { label: "One uppercase letter", passed: /[A-Z]/.test(newPassword) },
+    { label: "One lowercase letter", passed: /[a-z]/.test(newPassword) },
+    { label: "One number", passed: /[0-9]/.test(newPassword) },
+    { label: "One symbol", passed: /[^A-Za-z0-9]/.test(newPassword) },
+  ];
+  const newPasswordIsStrong = passwordChecks.every((check) => check.passed);
+  const passwordsMatch = Boolean(confirmPassword) && newPassword === confirmPassword;
+
   const handleRequestReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -95,8 +105,8 @@ export default function ForgotPasswordPage() {
     e.preventDefault();
     setError("");
 
-    if (newPassword.length < 8) {
-      setError("Password must be at least 8 characters");
+    if (!newPasswordIsStrong) {
+      setError("Password must include uppercase, lowercase, number, and symbol.");
       return;
     }
 
@@ -298,6 +308,21 @@ export default function ForgotPasswordPage() {
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
+            {newPassword && (
+              <div className="mt-3 grid gap-2 rounded-lg border border-border bg-background/60 p-3 text-xs text-foreground-muted sm:grid-cols-2">
+                {passwordChecks.map((check) => (
+                  <div
+                    key={check.label}
+                    className={`flex items-center gap-2 ${
+                      check.passed ? "text-accent-green" : "text-foreground-muted"
+                    }`}
+                  >
+                    <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>{check.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">
@@ -325,6 +350,9 @@ export default function ForgotPasswordPage() {
                 {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
+            {confirmPassword && !passwordsMatch && (
+              <p className="text-xs text-accent-red">Passwords do not match yet.</p>
+            )}
           </div>
 
           <button

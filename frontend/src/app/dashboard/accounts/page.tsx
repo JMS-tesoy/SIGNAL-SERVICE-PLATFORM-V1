@@ -15,6 +15,8 @@ import {
   Key,
   Copy,
   Info,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
 import { subscriptionApi, userApi } from "@/lib/api";
@@ -60,6 +62,44 @@ export default function AccountsPage() {
   const [error, setError] = useState("");
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  const isFreeAccount = !subscription || subscription.tier.name === "free";
+  const accountId = newAccount.accountId.trim();
+  const broker = newAccount.broker.trim();
+  const server = newAccount.server.trim();
+  const accountIdIsNumeric = /^\d+$/.test(accountId);
+  const duplicateAccount = accounts.some(
+    (account) => account.accountId === accountId
+  );
+  const accountValidation = {
+    accountId:
+      !accountId
+        ? "Account ID is required."
+        : !accountIdIsNumeric
+          ? "Account ID should contain numbers only."
+          : accountId.length < 5
+            ? "Account ID should be at least 5 digits."
+            : accountId.length > 50
+              ? "Account ID must be 50 digits or fewer."
+              : duplicateAccount
+                ? "This MT5 account is already connected."
+                : "",
+    server:
+      !server
+        ? "Server is required."
+        : server.length < 3
+          ? "Server should be at least 3 characters."
+          : server.length > 100
+            ? "Server must be 100 characters or fewer."
+            : "",
+    broker:
+      broker.length > 100 ? "Broker must be 100 characters or fewer." : "",
+  };
+  const addFormIsValid =
+    !accountValidation.accountId &&
+    !accountValidation.server &&
+    !accountValidation.broker &&
+    !(isFreeAccount && newAccount.accountType === "MASTER");
+
   const fetchAccounts = async () => {
     if (!accessToken) return;
     setIsLoading(true);
@@ -93,8 +133,6 @@ export default function AccountsPage() {
     fetchSubscription();
   }, [accessToken, setSubscription, subscription]);
 
-  const isFreeAccount = !subscription || subscription.tier.name === "free";
-
   const handleAddAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accessToken) return;
@@ -102,9 +140,13 @@ export default function AccountsPage() {
     setActionLoading("add");
     setError("");
 
-    const server = newAccount.server.trim();
-    if (!server) {
-      setError("Server is required.");
+    if (!addFormIsValid) {
+      setError(
+        accountValidation.accountId ||
+          accountValidation.server ||
+          accountValidation.broker ||
+          "Please fix the highlighted fields."
+      );
       setActionLoading(null);
       return;
     }
@@ -117,9 +159,9 @@ export default function AccountsPage() {
 
     try {
       const result = await userApi.addMT5Account(accessToken, {
-        accountId: newAccount.accountId.trim(),
+        accountId,
         accountType: newAccount.accountType,
-        broker: newAccount.broker.trim() || undefined,
+        broker: broker || undefined,
         server,
       });
 
@@ -364,10 +406,19 @@ export default function AccountsPage() {
                         accountId: e.target.value,
                       })
                     }
-                    className="input"
+                    className={`input ${accountValidation.accountId ? "border-accent-red focus:border-accent-red focus:ring-accent-red" : ""}`}
                     placeholder="e.g., 12345678"
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={50}
                     required
                   />
+                  {accountValidation.accountId && (
+                    <p className="mt-2 flex items-start gap-2 text-xs text-accent-red">
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                      {accountValidation.accountId}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -412,9 +463,16 @@ export default function AccountsPage() {
                     onChange={(e) =>
                       setNewAccount({ ...newAccount, broker: e.target.value })
                     }
-                    className="input"
+                    className={`input ${accountValidation.broker ? "border-accent-red focus:border-accent-red focus:ring-accent-red" : ""}`}
                     placeholder="e.g., IC Markets"
+                    maxLength={100}
                   />
+                  {accountValidation.broker && (
+                    <p className="mt-2 flex items-start gap-2 text-xs text-accent-red">
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                      {accountValidation.broker}
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -427,10 +485,18 @@ export default function AccountsPage() {
                     onChange={(e) =>
                       setNewAccount({ ...newAccount, server: e.target.value })
                     }
-                    className="input"
+                    className={`input ${accountValidation.server ? "border-accent-red focus:border-accent-red focus:ring-accent-red" : ""}`}
                     placeholder="e.g., ICMarkets-Demo"
+                    autoComplete="off"
+                    maxLength={100}
                     required
                   />
+                  {accountValidation.server && (
+                    <p className="mt-2 flex items-start gap-2 text-xs text-accent-red">
+                      <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+                      {accountValidation.server}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex gap-3 pt-4">
@@ -443,7 +509,7 @@ export default function AccountsPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={actionLoading === "add"}
+                    disabled={actionLoading === "add" || !addFormIsValid}
                     className="flex-1 btn-primary flex items-center justify-center gap-2"
                   >
                     {actionLoading === "add" ? (
@@ -475,6 +541,7 @@ function AccountCard({
   generatedKey: string | null;
   isActionLoading: boolean;
 }) {
+  const [showGeneratedKey, setShowGeneratedKey] = useState(false);
   const timeSinceHeartbeat = account.lastHeartbeat
     ? Math.round(
         (Date.now() - new Date(account.lastHeartbeat).getTime()) / 1000 / 60
@@ -595,24 +662,45 @@ function AccountCard({
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="bg-yellow-900/20 border border-yellow-700/50 p-4 rounded-lg mt-2">
-              <div className="flex items-start gap-2 text-yellow-500 mb-2">
-                <AlertCircle className="w-4 h-4 mt-0.5" />
-                <p className="text-xs font-bold">
-                  COPY KEY NOW - IT WILL NOT BE SHOWN AGAIN
-                </p>
+            <div className="mt-2 rounded-xl border border-primary/20 bg-primary/5 p-4">
+              <div className="mb-3 flex items-start justify-between gap-4">
+                <div className="flex items-start gap-2">
+                  <div className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <Key className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      API key generated
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-foreground-muted">
+                      Copy it now. For security, this key will not be shown again after you leave this panel.
+                    </p>
+                  </div>
+                </div>
               </div>
 
-              <div className="flex gap-2">
-                <input
-                  readOnly
-                  value={generatedKey}
-                  className="flex-1 bg-black/40 border border-yellow-800/50 text-yellow-200 font-mono text-sm px-3 py-2 rounded focus:outline-none focus:border-yellow-600"
-                  onClick={(e) => e.currentTarget.select()}
-                />
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <div className="relative flex-1">
+                  <input
+                    readOnly
+                    type={showGeneratedKey ? "text" : "password"}
+                    value={generatedKey}
+                    className="input h-11 pr-12 font-mono text-sm"
+                    onClick={(e) => e.currentTarget.select()}
+                    aria-label="Generated MT5 API key"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowGeneratedKey((visible) => !visible)}
+                    className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-foreground-subtle transition hover:bg-background-elevated hover:text-foreground"
+                    aria-label={showGeneratedKey ? "Hide API key" : "Reveal API key"}
+                  >
+                    {showGeneratedKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
                 <button
                   onClick={() => navigator.clipboard.writeText(generatedKey)}
-                  className="bg-yellow-800/50 hover:bg-yellow-700/50 text-yellow-100 px-4 rounded text-sm transition flex items-center gap-2 border border-yellow-700/50"
+                  className="btn-secondary flex h-11 items-center justify-center gap-2 px-4 text-sm"
                 >
                   <Copy className="w-4 h-4" />
                   Copy

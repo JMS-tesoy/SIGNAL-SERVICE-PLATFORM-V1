@@ -49,8 +49,9 @@ export default function RegisterPage() {
   ];
 
   const strength = passwordChecks.filter((check) => check.passed).length;
+  const passwordIsStrong = passwordChecks.every((check) => check.passed);
   const passwordsMatch = Boolean(confirmPassword) && password === confirmPassword;
-  const canSubmitRegister = Boolean(normalizedEmail) && password.length >= 8 && passwordsMatch && !isLoading;
+  const canSubmitRegister = Boolean(normalizedEmail) && passwordIsStrong && passwordsMatch && !isLoading;
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,8 +63,8 @@ export default function RegisterPage() {
       return;
     }
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+    if (!passwordIsStrong) {
+      setError("Password must include uppercase, lowercase, number, and symbol.");
       return;
     }
 
