@@ -260,11 +260,11 @@ JWT_SECRET="replace-with-a-random-secret-at-least-32-chars"
 JWT_EXPIRES_IN="1h"
 REFRESH_TOKEN_EXPIRES_IN="7d"
 
-# Email (SMTP)
-SMTP_HOST="smtp.gmail.com"
-SMTP_PORT=587
-SMTP_USER="your-email@gmail.com"
-SMTP_PASS="your-app-password"
+# Email (Resend)
+RESEND_API_KEY=
+RESEND_FROM_APP="Signal Service App <noreply@tesoy.online>"
+RESEND_FROM_AUTH="Signal Service Auth <auth@tesoy.online>"
+RESEND_FROM_SUPPORT="Signal Service Support <support@tesoy.online>"
 
 # Twilio (SMS)
 TWILIO_ACCOUNT_SID="your-sid"
@@ -277,7 +277,9 @@ STRIPE_WEBHOOK_SECRET="whsec_..."
 
 # App
 PORT=3001
-FRONTEND_URL="http://localhost:3000"
+APP_URL="https://www.tesoy.online"
+NEXT_PUBLIC_SITE_URL="https://www.tesoy.online"
+FRONTEND_URL="https://www.tesoy.online"
 ```
 
 ## 💳 Subscription Tiers

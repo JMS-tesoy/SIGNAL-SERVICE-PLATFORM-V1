@@ -10,8 +10,13 @@ import { asyncHandler } from '../middleware/error.middleware.js';
 
 const router = Router();
 
-// Define downloads directory (relative to backend folder)
-const DOWNLOADS_DIR = path.resolve(process.cwd(), '..', "EA's");
+// Railway deploys the backend service from the backend directory, so production
+// downloads must live inside the backend deploy context.
+const DOWNLOAD_DIRS = [
+  process.env.DOWNLOADS_DIR,
+  path.resolve(process.cwd(), 'downloads'),
+  path.resolve(process.cwd(), '..', "EA's"),
+].filter(Boolean) as string[];
 
 // Available files for download
 const AVAILABLE_FILES = {
@@ -50,11 +55,15 @@ router.get('/:fileId', authenticate, asyncHandler(async (req: Request, res: Resp
     return res.status(404).json({ error: 'File not found' });
   }
 
-  const filePath = path.join(DOWNLOADS_DIR, fileInfo.filename);
+  const filePath = DOWNLOAD_DIRS
+    .map((dir) => path.join(dir, fileInfo.filename))
+    .find((candidatePath) => fs.existsSync(candidatePath));
 
   // Check if file exists
-  if (!fs.existsSync(filePath)) {
-    console.error(`Download file not found: ${filePath}`);
+  if (!filePath) {
+    console.error(
+      `Download file not found: ${fileInfo.filename}. Checked: ${DOWNLOAD_DIRS.join(', ')}`
+    );
     return res.status(404).json({ error: 'File not available' });
   }
 

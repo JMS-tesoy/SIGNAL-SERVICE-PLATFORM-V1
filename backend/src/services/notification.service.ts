@@ -4,6 +4,7 @@
 
 import { sendEmail } from './email.service.js';
 import prisma from '../config/database.js';
+import { getSiteUrl } from '../lib/site-url.js';
 
 // =============================================================================
 // TYPES
@@ -73,7 +74,7 @@ const notificationTemplates = {
         </div>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.FRONTEND_URL}/dashboard/security"
+          <a href="${getSiteUrl()}/dashboard/security"
              style="display: inline-block; background: #0ea5e9; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
             Review Security Settings
           </a>
@@ -202,7 +203,7 @@ const notificationTemplates = {
         </div>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.FRONTEND_URL}/dashboard/security"
+          <a href="${getSiteUrl()}/dashboard/security"
              style="display: inline-block; background: #0ea5e9; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
             Re-enable 2FA
           </a>
@@ -238,7 +239,7 @@ const notificationTemplates = {
         </div>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.FRONTEND_URL}/dashboard"
+          <a href="${getSiteUrl()}/dashboard"
              style="display: inline-block; background: #0ea5e9; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
             Go to Dashboard
           </a>
@@ -286,7 +287,7 @@ const notificationTemplates = {
         <p>If you believe this is an error, please contact our support team.</p>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.FRONTEND_URL}/support"
+          <a href="${getSiteUrl()}/support"
              style="display: inline-block; background: #0ea5e9; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
             Contact Support
           </a>
@@ -341,7 +342,7 @@ const notificationTemplates = {
         </div>
 
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.FRONTEND_URL}/dashboard/security"
+          <a href="${getSiteUrl()}/dashboard/security"
              style="display: inline-block; background: #ef4444; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
             Secure My Account
           </a>

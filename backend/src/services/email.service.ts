@@ -4,6 +4,7 @@
 
 import { sendEmail as sendTransactionalEmail } from '../lib/email/send-email.js';
 import { emailSenders } from '../lib/email/senders.js';
+import { getSiteUrl } from '../lib/site-url.js';
 import { welcomeTemplate, welcomeText } from '../lib/email/templates/welcome.js';
 
 // =============================================================================
@@ -53,7 +54,7 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
 export const emailTemplates = {
   // Welcome email after registration
   welcome: (_name: string) => {
-    const dashboardUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard`;
+    const dashboardUrl = `${getSiteUrl()}/dashboard`;
 
     return {
       subject: 'Welcome to Signal Service',
@@ -124,7 +125,7 @@ export const emailTemplates = {
         <p>To continue receiving trading signals without interruption, please renew your subscription.</p>
         
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${process.env.FRONTEND_URL}/dashboard/subscription" 
+          <a href="${getSiteUrl()}/dashboard/subscription" 
              style="background: #0ea5e9; color: white; padding: 12px 30px; text-decoration: none; border-radius: 8px; font-weight: bold;">
             Renew Now
           </a>

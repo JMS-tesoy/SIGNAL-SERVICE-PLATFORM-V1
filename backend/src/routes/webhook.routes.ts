@@ -6,6 +6,7 @@ import { Router, Request, Response } from "express";
 import Stripe from "stripe";
 import prisma from "../config/database.js";
 import { sendEmail, emailTemplates } from "../services/email.service.js";
+import { getSiteUrl } from "../lib/site-url.js";
 
 const router = Router();
 
@@ -349,7 +350,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
         <h2 style="color: #ef4444;">Payment Failed</h2>
         <p>We were unable to process your subscription payment.</p>
         <p>Please update your payment method to continue receiving signals.</p>
-        <a href="${process.env.FRONTEND_URL}/dashboard/subscription" 
+        <a href="${getSiteUrl()}/dashboard/subscription" 
            style="display: inline-block; background: #0ea5e9; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
           Update Payment Method
         </a>

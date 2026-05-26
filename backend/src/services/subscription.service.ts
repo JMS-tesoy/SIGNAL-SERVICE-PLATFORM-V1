@@ -6,6 +6,7 @@ import Stripe from 'stripe';
 import prisma from '../config/database.js';
 import { sendEmail, emailTemplates } from './email.service.js';
 import { BillingCycle, SubscriptionStatus } from '@prisma/client';
+import { getSiteUrl } from '../lib/site-url.js';
 
 // =============================================================================
 // STRIPE CLIENT
@@ -134,8 +135,8 @@ export async function createCheckoutSession(
         },
       ],
       mode: 'subscription',
-      success_url: `${process.env.FRONTEND_URL}/dashboard/subscription?success=true`,
-      cancel_url: `${process.env.FRONTEND_URL}/dashboard/subscription?canceled=true`,
+      success_url: `${getSiteUrl()}/dashboard/subscription?success=true`,
+      cancel_url: `${getSiteUrl()}/dashboard/subscription?canceled=true`,
       metadata: {
         userId: user.id,
         tierId: tier.id,
@@ -452,7 +453,7 @@ export async function getBillingPortalUrl(userId: string): Promise<{ success: bo
 
     const session = await stripe.billingPortal.sessions.create({
       customer: subscription.stripeCustomerId,
-      return_url: `${process.env.FRONTEND_URL}/dashboard/subscription`,
+      return_url: `${getSiteUrl()}/dashboard/subscription`,
     });
 
     return {
