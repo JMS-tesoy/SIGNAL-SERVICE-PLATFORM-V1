@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -56,6 +56,7 @@ export default function DashboardLayout({
   const { user, accessToken, isAuthenticated, isLoading, logout, setUser, setLoading } = useAuthStore();
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const hydratedTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -67,10 +68,21 @@ export default function DashboardLayout({
 
       if (!accessToken) {
         setLoading(false);
-        router.push('/login');
+        router.replace('/login');
         return;
       }
 
+      if (hydratedTokenRef.current === accessToken) {
+        return;
+      }
+
+      if (user) {
+        hydratedTokenRef.current = accessToken;
+        setLoading(false);
+        return;
+      }
+
+      hydratedTokenRef.current = accessToken;
       const result = await userApi.getProfile(accessToken);
 
       if (!isMounted) {
@@ -79,9 +91,17 @@ export default function DashboardLayout({
 
       if (result.data?.user) {
         setUser(result.data.user);
+      } else if (result.status === 429) {
+        hydratedTokenRef.current = null;
+        setLoading(false);
+        return;
       } else {
+        hydratedTokenRef.current = null;
         logout();
-        router.push('/login');
+        const message = encodeURIComponent(
+          result.error || 'Session expired. Please sign in again.'
+        );
+        router.replace(`/login?error=${message}`);
       }
 
       setLoading(false);
@@ -92,17 +112,17 @@ export default function DashboardLayout({
     return () => {
       isMounted = false;
     };
-  }, [accessToken, isLoading, logout, router, setLoading, setUser]);
+  }, [accessToken, isLoading, logout, router, setLoading, setUser, user]);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated && !accessToken) {
-      router.push('/login');
+      router.replace('/login');
     }
   }, [accessToken, isAuthenticated, isLoading, router]);
 
   const handleLogout = () => {
     logout();
-    router.push('/login');
+    router.replace('/login');
   };
 
   if (isLoading || !isAuthenticated) {

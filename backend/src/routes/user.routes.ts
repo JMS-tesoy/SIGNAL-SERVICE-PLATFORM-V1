@@ -86,6 +86,13 @@ router.put(
       return res.status(401).json({ error: "Current password is incorrect" });
     }
 
+    const isSamePassword = await comparePassword(newPassword, user.password);
+    if (isSamePassword) {
+      return res.status(400).json({
+        error: "New password must be different from your current password",
+      });
+    }
+
     const hashedPassword = await hashPassword(newPassword);
 
     const updatedUser = await userRepository.updateUserPassword(

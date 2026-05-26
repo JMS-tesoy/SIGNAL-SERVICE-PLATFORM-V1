@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   TrendingUp,
@@ -144,10 +144,17 @@ export default function DashboardPage() {
   const [performanceData, setPerformanceData] = useState<{ date: string; growth: number; drawdown: number }[]>([]);
   const [performancePeriod, setPerformancePeriod] = useState<'7D' | '30D' | '90D'>('90D');
   const [isLoading, setIsLoading] = useState(true);
+  const fetchKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
       if (!accessToken) return;
+
+      const fetchKey = `${accessToken}:${performancePeriod}`;
+      if (fetchKeyRef.current === fetchKey) {
+        return;
+      }
+      fetchKeyRef.current = fetchKey;
 
       try {
         // Fetch signal stats
@@ -181,6 +188,7 @@ export default function DashboardPage() {
         }
       } catch (error) {
         console.error('Failed to fetch dashboard data:', error);
+        fetchKeyRef.current = null;
       } finally {
         setIsLoading(false);
       }

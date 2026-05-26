@@ -4,9 +4,14 @@ import { env } from "./env.js";
 
 type RateLimitConfig = Partial<Options>;
 
+const generalMaxRequests =
+  env.NODE_ENV === "development"
+    ? Math.max(env.RATE_LIMIT_MAX_REQUESTS, 1000)
+    : env.RATE_LIMIT_MAX_REQUESTS;
+
 export const generalRateLimitConfig: RateLimitConfig = {
   windowMs: env.RATE_LIMIT_WINDOW_MS,
-  max: env.RATE_LIMIT_MAX_REQUESTS,
+  max: generalMaxRequests,
   message: { error: "Too many requests, please try again later." },
   standardHeaders: true,
   legacyHeaders: false,

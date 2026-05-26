@@ -15,7 +15,7 @@ import {
 } from '../services/otp.service.js';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { asyncHandler } from '../middleware/error.middleware.js';
-import prisma from '../config/database.js';
+import { otpRepository } from '../database/repositories/index.js';
 import { OTPType } from '@prisma/client';
 
 const router = Router();
@@ -31,10 +31,7 @@ router.post('/send/email', authenticate, asyncHandler(async (req: Request, res: 
     return res.status(400).json({ error: 'Invalid OTP type' });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-    select: { email: true },
-  });
+  const user = await otpRepository.findUserEmailById(req.user!.id);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -60,10 +57,7 @@ router.post('/send/sms', authenticate, asyncHandler(async (req: Request, res: Re
     return res.status(400).json({ error: 'OTP type required' });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-    select: { phone: true },
-  });
+  const user = await otpRepository.findUserPhoneById(req.user!.id);
 
   const phoneNumber = phone || user?.phone;
 
@@ -105,10 +99,7 @@ router.post('/verify', authenticate, asyncHandler(async (req: Request, res: Resp
 // =============================================================================
 
 router.post('/totp/setup', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-    select: { email: true, twoFactorEnabled: true },
-  });
+  const user = await otpRepository.findTotpSetupUserById(req.user!.id);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -159,10 +150,7 @@ router.post('/totp/disable', authenticate, asyncHandler(async (req: Request, res
   const { password } = req.body;
 
   // Verify password before disabling 2FA
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-    select: { password: true },
-  });
+  const user = await otpRepository.findUserPasswordById(req.user!.id);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -185,15 +173,7 @@ router.post('/totp/disable', authenticate, asyncHandler(async (req: Request, res
 // =============================================================================
 
 router.get('/status', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-    select: {
-      twoFactorEnabled: true,
-      twoFactorMethod: true,
-      emailVerified: true,
-      phone: true,
-    },
-  });
+  const user = await otpRepository.findTwoFactorStatusByUserId(req.user!.id);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });

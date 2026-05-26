@@ -44,6 +44,31 @@ export default function SecurityPage() {
     fetchStatus();
   }, [accessToken]);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      setSetupStep('idle');
+      setTotpData(null);
+      setBackupCodes([]);
+      setVerifyCode('');
+      setError('');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  const resetSetupFlow = () => {
+    setSetupStep('idle');
+    setTotpData(null);
+    setBackupCodes([]);
+    setVerifyCode('');
+    setError('');
+
+    if (window.location.pathname === '/dashboard/security') {
+      window.history.replaceState(null, '', '/dashboard/security');
+    }
+  };
+
   const fetchStatus = async () => {
     if (!accessToken) return;
     setIsLoading(true);
@@ -70,6 +95,14 @@ export default function SecurityPage() {
       if (result.data) {
         setTotpData(result.data);
         setSetupStep('setup');
+
+        if (window.location.pathname === '/dashboard/security') {
+          window.history.pushState(
+            { securitySetup: 'totp' },
+            '',
+            '/dashboard/security?setup=authenticator'
+          );
+        }
       } else if (result.error) {
         setError(result.error);
       }
@@ -277,11 +310,7 @@ export default function SecurityPage() {
           </div>
 
           <button
-            onClick={() => {
-              setSetupStep('idle');
-              setTotpData(null);
-              setVerifyCode('');
-            }}
+            onClick={resetSetupFlow}
             className="mt-4 text-foreground-muted hover:text-foreground text-sm"
           >
             ← Cancel setup
@@ -322,11 +351,7 @@ export default function SecurityPage() {
               Copy All
             </button>
             <button
-              onClick={() => {
-                setSetupStep('idle');
-                setBackupCodes([]);
-                setTotpData(null);
-              }}
+              onClick={resetSetupFlow}
               className="btn-primary"
             >
               Done

@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -47,6 +47,7 @@ function LoginContent() {
   const searchParams = useSearchParams();
   const { setUser, setTokens } = useAuthStore();
   const isVerifiedRedirect = searchParams.get("verified") === "true";
+  const loginError = searchParams.get("error");
 
   const [step, setStep] = useState<"credentials" | "otp">("credentials");
   const [email, setEmail] = useState("");
@@ -55,11 +56,17 @@ function LoginContent() {
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [tempToken, setTempToken] = useState("");
   const [twoFactorMethod, setTwoFactorMethod] = useState("");
-  const [error, setError] = useState("");
+  const [error, setError] = useState(loginError || "");
   const [statusMessage, setStatusMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isResending, setIsResending] = useState(false);
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (loginError) {
+      setError(loginError);
+    }
+  }, [loginError]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,7 +89,9 @@ function LoginContent() {
       } else if (result.data?.accessToken) {
         setUser(result.data.user);
         setTokens(result.data.accessToken, result.data.refreshToken!);
-        router.push("/dashboard");
+        router.replace("/dashboard");
+      } else {
+        setError("Login response was incomplete. Please try again.");
       }
     } catch (err) {
       setError("Login failed. Please try again.");
@@ -134,7 +143,9 @@ function LoginContent() {
       if (result.data?.accessToken) {
         setUser(result.data.user);
         setTokens(result.data.accessToken, result.data.refreshToken);
-        router.push("/dashboard");
+        router.replace("/dashboard");
+      } else {
+        setError("Verification response was incomplete. Please try again.");
       }
     } catch (err) {
       setError("Verification failed. Please try again.");

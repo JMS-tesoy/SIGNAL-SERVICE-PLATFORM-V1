@@ -43,6 +43,7 @@ export default function SettingsPage() {
   const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
 
   const passwordChecks = [
     { label: 'At least 8 characters', passed: passwords.new.length >= 8 },
@@ -220,14 +221,23 @@ export default function SettingsPage() {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accessToken) return;
+    setPasswordMessage({ type: '', text: '' });
 
     if (passwords.new !== passwords.confirm) {
-      setMessage({ type: 'error', text: 'New passwords do not match' });
+      setPasswordMessage({ type: 'error', text: 'New passwords do not match' });
+      return;
+    }
+
+    if (passwords.current === passwords.new) {
+      setPasswordMessage({
+        type: 'error',
+        text: 'New password must be different from your current password',
+      });
       return;
     }
 
     if (!newPasswordIsStrong) {
-      setMessage({
+      setPasswordMessage({
         type: 'error',
         text: 'Password must include uppercase, lowercase, number, and symbol.',
       });
@@ -241,14 +251,14 @@ export default function SettingsPage() {
       const result = await userApi.changePassword(accessToken, passwords.current, passwords.new);
 
       if (result.error) {
-        setMessage({ type: 'error', text: result.error });
+        setPasswordMessage({ type: 'error', text: result.error });
       } else {
-        setMessage({ type: 'success', text: 'Password changed successfully' });
+        setPasswordMessage({ type: 'success', text: 'Password changed successfully' });
         setPasswords({ current: '', new: '', confirm: '' });
         setVisiblePasswordFields({ current: false, new: false, confirm: false });
       }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to change password' });
+      setPasswordMessage({ type: 'error', text: 'Failed to change password' });
     } finally {
       setIsChangingPassword(false);
     }
@@ -520,6 +530,18 @@ export default function SettingsPage() {
               <p className="mt-2 text-xs text-accent-red">New passwords do not match yet.</p>
             )}
           </div>
+
+          {passwordMessage.text && (
+            <div
+              className={`rounded-lg border px-3 py-2 text-sm ${
+                passwordMessage.type === 'success'
+                  ? 'border-accent-green/20 bg-accent-green/10 text-accent-green'
+                  : 'border-accent-red/20 bg-accent-red/10 text-accent-red'
+              }`}
+            >
+              {passwordMessage.text}
+            </div>
+          )}
 
           <button
             type="submit"

@@ -66,3 +66,4 @@ provider_login.json
 D*temp_login.json
 .vercel
 .env*.local
+debug-login-frame-*.png
