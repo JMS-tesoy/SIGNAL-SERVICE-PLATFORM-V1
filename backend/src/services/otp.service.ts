@@ -9,6 +9,8 @@ import prisma from '../config/database.js';
 import { sendEmail } from './email.service.js';
 import { sendSMS } from './sms.service.js';
 import { OTPType, OTPMethod } from '@prisma/client';
+import { emailSenders } from '../lib/email/senders.js';
+import { otpTemplate, otpText } from '../lib/email/templates/otp.js';
 
 // Configure TOTP
 authenticator.options = {
@@ -85,53 +87,19 @@ export async function sendEmailOTP(
       },
     });
 
-    // Email templates based on type
-    const templates: Record<OTPType, { subject: string; body: string }> = {
+    // Email subjects based on type
+    const templates: Record<OTPType, { subject: string }> = {
       EMAIL_VERIFICATION: {
-        subject: 'Verify Your Email - Signal Service',
-        body: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #0ea5e9;">Email Verification</h2>
-            <p>Your verification code is:</p>
-            <div style="background: #f1f5f9; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
-              <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #0f172a;">${code}</span>
-            </div>
-            <p>This code expires in ${expiryMinutes} minutes.</p>
-            <p style="color: #64748b; font-size: 14px;">If you didn't request this, please ignore this email.</p>
-          </div>
-        `,
+        subject: 'Your verification code',
       },
       PASSWORD_RESET: {
-        subject: 'Password Reset - Signal Service',
-        body: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #ef4444;">Password Reset Request</h2>
-            <p>Your password reset code is:</p>
-            <div style="background: #fef2f2; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
-              <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #991b1b;">${code}</span>
-            </div>
-            <p>This code expires in ${expiryMinutes} minutes.</p>
-            <p style="color: #64748b; font-size: 14px;">If you didn't request this, please secure your account immediately.</p>
-          </div>
-        `,
+        subject: 'Your verification code',
       },
       TWO_FACTOR_LOGIN: {
-        subject: 'Login Verification - Signal Service',
-        body: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #8b5cf6;">Two-Factor Authentication</h2>
-            <p>Your login verification code is:</p>
-            <div style="background: #f5f3ff; padding: 20px; text-align: center; border-radius: 8px; margin: 20px 0;">
-              <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #5b21b6;">${code}</span>
-            </div>
-            <p>This code expires in ${expiryMinutes} minutes.</p>
-            <p style="color: #64748b; font-size: 14px;">If this wasn't you, please change your password immediately.</p>
-          </div>
-        `,
+        subject: 'Your verification code',
       },
       PHONE_VERIFICATION: {
-        subject: 'Phone Verification - Signal Service',
-        body: `Your verification code is: ${code}`,
+        subject: 'Your verification code',
       },
     };
 
@@ -151,8 +119,10 @@ export async function sendEmailOTP(
     try {
       await sendEmail({
         to: email,
+        from: emailSenders.auth,
         subject: template.subject,
-        html: template.body,
+        html: otpTemplate({ code }),
+        text: `${otpText({ code })}\n\nThis code expires in ${expiryMinutes} minutes.`,
       });
     } catch (emailError) {
       console.error('Email sending failed, but OTP was generated. Use the code from console above.');

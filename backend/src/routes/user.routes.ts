@@ -14,7 +14,7 @@ import {
   hashMt5ApiKey,
   isHashedMt5ApiKey,
 } from "../utils/api-key.js";
-import prisma from "../config/database.js";
+import { userRepository } from "../database/repositories/index.js";
 
 const router = Router();
 
@@ -26,37 +26,7 @@ router.get(
   "/profile",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const user = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        avatar: true,
-        emailVerified: true,
-        twoFactorEnabled: true,
-        twoFactorMethod: true,
-        role: true,
-        createdAt: true,
-        lastLoginAt: true,
-        subscription: {
-          include: { tier: true },
-        },
-        mt5Accounts: {
-          select: {
-            id: true,
-            accountId: true,
-            accountType: true,
-            broker: true,
-            isConnected: true,
-            lastHeartbeat: true,
-            balance: true,
-            equity: true,
-          },
-        },
-      },
-    });
+    const user = await userRepository.findUserProfileById(req.user!.id);
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
@@ -82,17 +52,7 @@ router.put(
   asyncHandler(async (req: Request, res: Response) => {
     const data = updateProfileSchema.parse(req.body);
 
-    const user = await prisma.user.update({
-      where: { id: req.user!.id },
-      data,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        phone: true,
-        avatar: true,
-      },
-    });
+    const user = await userRepository.updateUserProfile(req.user!.id, data);
 
     res.json({ user, message: "Profile updated" });
   })
@@ -115,10 +75,7 @@ router.put(
       req.body
     );
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.user!.id },
-      select: { password: true },
-    });
+    const user = await userRepository.findUserPasswordById(req.user!.id);
 
     if (!user) {
       return res.status(404).json({ error: "User not found" });
@@ -131,21 +88,15 @@ router.put(
 
     const hashedPassword = await hashPassword(newPassword);
 
-    const updatedUser = await prisma.user.update({
-      where: { id: req.user!.id },
-      data: { password: hashedPassword },
-      select: { email: true, name: true },
-    });
+    const updatedUser = await userRepository.updateUserPassword(
+      req.user!.id,
+      hashedPassword
+    );
 
     // Invalidate all sessions except current
     const currentToken = req.headers.authorization?.split(" ")[1];
     if (currentToken) {
-      await prisma.session.deleteMany({
-        where: {
-          userId: req.user!.id,
-          token: { not: currentToken },
-        },
-      });
+      await userRepository.deleteOtherUserSessions(req.user!.id, currentToken);
     }
 
     // Send password change notification (non-blocking)
@@ -182,10 +133,9 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const data = addMT5AccountSchema.parse(req.body);
 
-    const subscription = await prisma.subscription.findUnique({
-      where: { userId: req.user!.id },
-      include: { tier: true },
-    });
+    const subscription = await userRepository.findSubscriptionWithTierByUserId(
+      req.user!.id
+    );
 
     if (data.accountType === "MASTER") {
       if (!subscription || subscription.status !== "ACTIVE") {
@@ -210,9 +160,9 @@ router.post(
         });
       }
 
-      const currentSlaveCount = await prisma.mT5Account.count({
-        where: { userId: req.user!.id, accountType: "SLAVE" },
-      });
+      const currentSlaveCount = await userRepository.countSlaveAccountsByUserId(
+        req.user!.id
+      );
 
       if (currentSlaveCount >= subscription.tier.maxSlaveAccounts) {
         return res.status(403).json({
@@ -221,12 +171,7 @@ router.post(
       }
     }
 
-    const account = await prisma.mT5Account.create({
-      data: {
-        userId: req.user!.id,
-        ...data,
-      },
-    });
+    const account = await userRepository.createMt5Account(req.user!.id, data);
 
     res.status(201).json({ account, message: "MT5 account added" });
   })
@@ -241,27 +186,19 @@ router.get(
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const [accounts, subscription, currentSlaveCount] = await Promise.all([
-      prisma.mT5Account.findMany({
-        where: { userId: req.user!.id },
-        orderBy: { createdAt: "desc" },
-      }),
-      prisma.subscription.findUnique({
-        where: { userId: req.user!.id },
-        include: { tier: true },
-      }),
-      prisma.mT5Account.count({
-        where: { userId: req.user!.id, accountType: "SLAVE" },
-      }),
+      userRepository.findMt5AccountsByUserId(req.user!.id),
+      userRepository.findSubscriptionWithTierByUserId(req.user!.id),
+      userRepository.countSlaveAccountsByUserId(req.user!.id),
     ]);
 
     await Promise.all(
       accounts
         .filter((account) => account.apiKey && !isHashedMt5ApiKey(account.apiKey))
         .map((account) =>
-          prisma.mT5Account.update({
-            where: { id: account.id },
-            data: { apiKey: hashMt5ApiKey(account.apiKey!) },
-          })
+          userRepository.updateMt5AccountApiKey(
+            account.id,
+            hashMt5ApiKey(account.apiKey!)
+          )
         )
     );
 
@@ -300,9 +237,10 @@ router.post(
     // :accountId here represents the database UUID, matching the frontend call
     const { accountId } = req.params;
 
-    const account = await prisma.mT5Account.findFirst({
-      where: { id: accountId, userId: req.user!.id },
-    });
+    const account = await userRepository.findMt5AccountByIdAndUserId(
+      accountId,
+      req.user!.id
+    );
 
     if (!account) {
       return res.status(404).json({ error: "Account not found" });
@@ -310,10 +248,10 @@ router.post(
 
     const apiKey = generateMt5ApiKey();
 
-    await prisma.mT5Account.update({
-      where: { id: accountId },
-      data: { apiKey: hashMt5ApiKey(apiKey) },
-    });
+    await userRepository.updateMt5AccountApiKey(
+      accountId,
+      hashMt5ApiKey(apiKey)
+    );
 
     res.json({
       apiKey,
@@ -337,18 +275,16 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { accountId } = req.params;
 
-    const account = await prisma.mT5Account.findFirst({
-      where: { id: accountId, userId: req.user!.id },
-    });
+    const account = await userRepository.findMt5AccountByIdAndUserId(
+      accountId,
+      req.user!.id
+    );
 
     if (!account) {
       return res.status(404).json({ error: "Account not found" });
     }
 
-    await prisma.mT5Account.update({
-      where: { id: accountId },
-      data: { apiKey: null },
-    });
+    await userRepository.updateMt5AccountApiKey(accountId, null);
 
     res.json({ message: "API key revoked" });
   })
@@ -364,17 +300,16 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { accountId } = req.params;
 
-    const account = await prisma.mT5Account.findFirst({
-      where: { id: accountId, userId: req.user!.id },
-    });
+    const account = await userRepository.findMt5AccountByIdAndUserId(
+      accountId,
+      req.user!.id
+    );
 
     if (!account) {
       return res.status(404).json({ error: "Account not found" });
     }
 
-    await prisma.mT5Account.delete({
-      where: { id: accountId },
-    });
+    await userRepository.deleteMt5AccountById(accountId);
 
     res.json({ message: "MT5 account removed" });
   })
@@ -388,17 +323,7 @@ router.get(
   "/sessions",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const sessions = await prisma.session.findMany({
-      where: { userId: req.user!.id },
-      select: {
-        id: true,
-        ipAddress: true,
-        userAgent: true,
-        createdAt: true,
-        expiresAt: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const sessions = await userRepository.findUserSessions(req.user!.id);
 
     const currentToken = req.headers.authorization?.split(" ")[1];
 
@@ -421,9 +346,7 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { sessionId } = req.params;
 
-    await prisma.session.deleteMany({
-      where: { id: sessionId, userId: req.user!.id },
-    });
+    await userRepository.deleteUserSession(sessionId, req.user!.id);
 
     res.json({ message: "Session revoked" });
   })
@@ -439,12 +362,7 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const currentToken = req.headers.authorization?.split(" ")[1];
 
-    await prisma.session.deleteMany({
-      where: {
-        userId: req.user!.id,
-        token: { not: currentToken },
-      },
-    });
+    await userRepository.deleteOtherUserSessions(req.user!.id, currentToken);
 
     res.json({ message: "All other sessions revoked" });
   })

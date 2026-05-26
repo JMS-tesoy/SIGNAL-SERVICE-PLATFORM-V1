@@ -2,7 +2,9 @@
 // EMAIL SERVICE - Resend Integration
 // =============================================================================
 
-import { Resend } from 'resend';
+import { sendEmail as sendTransactionalEmail } from '../lib/email/send-email.js';
+import { emailSenders } from '../lib/email/senders.js';
+import { welcomeTemplate, welcomeText } from '../lib/email/templates/welcome.js';
 
 // =============================================================================
 // TYPES
@@ -13,77 +15,35 @@ interface EmailOptions {
   subject: string;
   html: string;
   text?: string;
+  from?: string;
+  replyTo?: string | string[];
 }
-
-// =============================================================================
-// RESEND CLIENT
-// =============================================================================
-
-const getResendClient = () => {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    const message = 'RESEND_API_KEY not configured - emails will not be sent';
-
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(message);
-    }
-
-    console.warn(message);
-    return null;
-  }
-  return new Resend(apiKey);
-};
-
-const getFromEmail = () => {
-  const fromEmail = process.env.EMAIL_FROM;
-
-  if (!fromEmail) {
-    const message = 'EMAIL_FROM not configured - emails will not be sent';
-
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error(message);
-    }
-
-    console.warn(message);
-    return 'Signal Service <noreply@tesoy.online>';
-  }
-
-  return fromEmail;
-};
 
 // =============================================================================
 // SEND EMAIL
 // =============================================================================
 
 export async function sendEmail(options: EmailOptions): Promise<void> {
-  try {
-    const resend = getResendClient();
+  if (!process.env.RESEND_API_KEY && process.env.NODE_ENV !== 'production') {
+    console.log(`[DEV MODE] Email would be sent to ${options.to}: ${options.subject}`);
+    return;
+  }
 
-    if (!resend) {
-      console.log(`[DEV MODE] Email would be sent to ${options.to}: ${options.subject}`);
-      return;
-    }
+  const result = await sendTransactionalEmail({
+    to: options.to,
+    from: options.from || emailSenders.app,
+    subject: options.subject,
+    html: options.html,
+    text: options.text,
+    replyTo: options.replyTo,
+  });
 
-    const fromEmail = getFromEmail();
-
-    const { error } = await resend.emails.send({
-      from: fromEmail,
-      to: options.to,
-      subject: options.subject,
-      html: options.html,
-      text: options.text || options.html.replace(/<[^>]*>/g, ''),
-    });
-
-    if (error) {
-      console.error('Resend error:', error);
-      throw new Error(`Failed to send email: ${error.message}`);
-    }
-
-    console.log(`Email sent successfully to ${options.to}`);
-  } catch (error) {
-    console.error('Failed to send email:', error);
+  if (!result.success) {
+    console.error('Failed to send email:', result.error);
     throw new Error('Failed to send email');
   }
+
+  console.log(`Email sent successfully to ${options.to}`);
 }
 
 // =============================================================================
@@ -92,33 +52,15 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
 
 export const emailTemplates = {
   // Welcome email after registration
-  welcome: (name: string) => ({
-    subject: 'Welcome to Signal Service!',
-    html: `
-      <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #f1f5f9; padding: 40px; border-radius: 16px;">
-        <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #0ea5e9; margin: 0;">Signal Service</h1>
-          <p style="color: #64748b; margin: 5px 0;">Professional Trading Signals</p>
-        </div>
-        
-        <h2 style="color: #f1f5f9;">Welcome, ${name}! 👋</h2>
-        
-        <p>Thank you for joining Signal Service. You're now part of a community of traders receiving premium trading signals.</p>
-        
-        <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin: 20px 0;">
-          <h3 style="color: #0ea5e9; margin-top: 0;">Getting Started</h3>
-          <ul style="color: #94a3b8; padding-left: 20px;">
-            <li>Complete your profile</li>
-            <li>Set up your MT5 account connection</li>
-            <li>Choose a subscription plan</li>
-            <li>Start receiving signals!</li>
-          </ul>
-        </div>
-        
-        <p style="color: #64748b; font-size: 14px;">If you have any questions, our support team is here to help.</p>
-      </div>
-    `,
-  }),
+  welcome: (_name: string) => {
+    const dashboardUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/dashboard`;
+
+    return {
+      subject: 'Welcome to Signal Service',
+      html: welcomeTemplate({ dashboardUrl }),
+      text: welcomeText({ dashboardUrl }),
+    };
+  },
 
   // Subscription confirmation
   subscriptionConfirmed: (tierName: string, periodEnd: Date) => ({
