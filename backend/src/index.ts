@@ -3,10 +3,19 @@
 // =============================================================================
 
 import "dotenv/config";
-import express, { Request, Response, NextFunction } from "express";
+import express, { Request, Response } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import { corsConfig } from "./config/cors.config.js";
+import { env } from "./config/env.js";
+import {
+  authRateLimitConfig,
+  generalRateLimitConfig,
+  generalRateLimitedRoutes,
+  signalRateLimitConfig,
+} from "./config/rate-limit.config.js";
+import { securityConfig, trustProxy } from "./config/security.config.js";
 
 // Routes
 import authRoutes from "./routes/auth.routes.js";
@@ -25,12 +34,13 @@ import {
   errorHandler,
   notFoundHandler,
 } from "./middleware/error.middleware.js";
+import { requestId } from "./core/middleware/index.js";
 
 // Cron Jobs
 import { startCronJobs } from "./jobs/scheduler.js";
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = env.PORT;
 
 // =============================================================================
 // GLOBAL MIDDLEWARE
@@ -39,35 +49,15 @@ const PORT = process.env.PORT || 3001;
 // [FIX 1] Unconditional Trust Proxy
 // Required for Railway/Heroku to pass the real IP address correctly.
 // Without this, everyone looks like they have the same IP (the load balancer).
-app.set("trust proxy", 1);
+app.set("trust proxy", trustProxy);
+
+// Request ID
+app.use(requestId);
 
 // Security headers
-app.use(helmet());
+app.use(helmet(securityConfig));
 
-// CORS - Support multiple origins for development and production
-const allowedOrigins = [
-  process.env.FRONTEND_URL || "http://localhost:3000",
-  "http://localhost:3000",
-  // Auto-detect Railway frontend URL
-  "https://signal-service-frontend-production.up.railway.app",
-  // Add production URLs via CORS_ORIGINS env var (comma-separated)
-  ...(process.env.CORS_ORIGINS?.split(",").map((o) => o.trim()) || []),
-].filter(Boolean);
-
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, etc)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
-      }
-    },
-    credentials: true,
-  })
-);
+app.use(cors(corsConfig));
 
 // =============================================================================
 // RATE LIMITING (THE STRONG FIX)
@@ -75,43 +65,17 @@ app.use(
 
 // 1. General Limiter (For Admin, Users, Subscriptions)
 // Keeps general traffic safe from spam.
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
-  message: { error: "Too many requests, please try again later." },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+const limiter = rateLimit(generalRateLimitConfig);
 
 // 2. Auth Limiter (LOOSE - For Humans)
 // Allows 100 login attempts per 15 mins. Based on IP.
 // This ensures you (the human) can always log in.
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5001,
-  message: { error: "LOGIN LIMIT REACHED: Please wait." },
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+const authLimiter = rateLimit(authRateLimitConfig);
 
 // 3. Signal Limiter (STRICT + ID BASED - For Bots)
 // [STRONG FIX] This uses the 'Account ID' to track the quota.
 // If the bot spams, it blocks 'MASTER_001', NOT your IP address.
-const signalLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute window
-  max: 60, // 60 requests per minute (1 per second)
-  message: { error: "Too many signal requests. Limit is 60/min." },
-  standardHeaders: true,
-  legacyHeaders: false,
-  // Key Generator: Identifies the caller by Account ID, not IP
-  keyGenerator: (req: Request) => {
-    // Check header first, then body. Fallback to IP only if ID is missing.
-    // Use optional chaining since body parser may not have run yet
-    const accountId =
-      (req.headers["x-account-id"] as string) || req.body?.account_id;
-    return accountId || req.ip || "unknown";
-  },
-});
+const signalLimiter = rateLimit(signalRateLimitConfig);
 
 // --- APPLY LIMITERS TO SPECIFIC ROUTES ---
 
@@ -123,19 +87,7 @@ app.use("/api/auth", authLimiter);
 
 // Apply the General Limiter to everything else
 // We list these explicitly so they don't overlap with Signals or Auth
-app.use(
-  [
-    "/api/users",
-    "/api/user",
-    "/api/security",
-    "/api/otp",
-    "/api/subscriptions",
-    "/api/webhooks",
-    "/api/admin",
-    "/api/downloads",
-  ],
-  limiter
-);
+app.use(generalRateLimitedRoutes, limiter);
 
 // Stripe webhooks need raw body
 app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }));
@@ -191,7 +143,7 @@ app.use(errorHandler);
 app.listen(PORT, () => {
   console.log(`🚀 Signal Service Backend running on http://localhost:${PORT}`);
 
-  if (process.env.NODE_ENV !== "test") {
+  if (env.NODE_ENV !== "test") {
     startCronJobs();
   }
 });
