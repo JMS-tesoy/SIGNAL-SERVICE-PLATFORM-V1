@@ -12,11 +12,13 @@ build/
 out/
 
 # Documentation drafts/local docs
-docs/
+docs/*
+docs/Prisma Studio guide.md
 
 # Environment files
 .env
 .env.local
+.env.*.local
 .env.development.local
 .env.test.local
 .env.production.local

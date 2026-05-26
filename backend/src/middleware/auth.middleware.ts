@@ -5,7 +5,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../services/auth.service.js';
 import { hashMt5ApiKey, isHashedMt5ApiKey } from '../utils/api-key.js';
-import prisma from '../config/database.js';
+import { authRepository } from '../database/repositories/index.js';
 
 // Extend Express Request type
 declare global {
@@ -40,20 +40,11 @@ async function authenticateWithApiKey(apiKey: string): Promise<{
   mt5Account: { id: string; accountId: string; accountType: string; userId: string };
 } | null> {
   const hashedApiKey = hashMt5ApiKey(apiKey);
-  const mt5Account = await prisma.mT5Account.findFirst({
-    where: {
-      OR: [
-        { apiKey: hashedApiKey },
-        // Backward compatibility for keys generated before hashing was added.
-        { apiKey },
-      ],
-    },
-    include: {
-      user: {
-        select: { id: true, email: true, role: true, status: true },
-      },
-    },
-  });
+  const mt5Account = await authRepository.findMt5AccountByApiKeyCandidates([
+    hashedApiKey,
+    // Backward compatibility for keys generated before hashing was added.
+    apiKey,
+  ]);
 
   if (!mt5Account || !mt5Account.user) {
     return null;
@@ -64,10 +55,7 @@ async function authenticateWithApiKey(apiKey: string): Promise<{
   }
 
   if (mt5Account.apiKey && !isHashedMt5ApiKey(mt5Account.apiKey)) {
-    await prisma.mT5Account.update({
-      where: { id: mt5Account.id },
-      data: { apiKey: hashedApiKey },
-    });
+    await authRepository.updateMt5AccountApiKey(mt5Account.id, hashedApiKey);
   }
 
   return {
@@ -119,10 +107,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     }
 
     // Check if user still exists and is active
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: { id: true, email: true, role: true, status: true },
-    });
+    const user = await authRepository.findAuthUserById(payload.userId);
 
     if (!user || !isActiveUserStatus(user.status)) {
       return res.status(401).json({ error: 'Account is not active' });
@@ -157,10 +142,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
       const payload = verifyToken(token);
 
       if (payload && payload.type === 'access') {
-        const user = await prisma.user.findUnique({
-          where: { id: payload.userId },
-          select: { id: true, email: true, role: true, status: true },
-        });
+        const user = await authRepository.findAuthUserById(payload.userId);
 
         if (user && isActiveUserStatus(user.status)) {
           req.user = { id: user.id, email: user.email, role: user.role };
@@ -218,10 +200,7 @@ export async function requireEmailVerified(req: Request, res: Response, next: Ne
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: req.user.id },
-    select: { emailVerified: true },
-  });
+  const user = await authRepository.findUserEmailVerificationById(req.user.id);
 
   if (!user?.emailVerified) {
     return res.status(403).json({ error: 'Email verification required' });
@@ -239,10 +218,9 @@ export async function requireActiveSubscription(req: Request, res: Response, nex
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  const subscription = await prisma.subscription.findUnique({
-    where: { userId: req.user.id },
-    include: { tier: true },
-  });
+  const subscription = await authRepository.findActiveSubscriptionByUserId(
+    req.user.id
+  );
 
   if (!subscription || subscription.status !== 'ACTIVE') {
     return res.status(403).json({ error: 'Active subscription required' });
