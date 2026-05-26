@@ -34,6 +34,23 @@ const getResendClient = () => {
   return new Resend(apiKey);
 };
 
+const getFromEmail = () => {
+  const fromEmail = process.env.EMAIL_FROM;
+
+  if (!fromEmail) {
+    const message = 'EMAIL_FROM not configured - emails will not be sent';
+
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(message);
+    }
+
+    console.warn(message);
+    return 'Signal Service <noreply@tesoy.online>';
+  }
+
+  return fromEmail;
+};
+
 // =============================================================================
 // SEND EMAIL
 // =============================================================================
@@ -47,7 +64,7 @@ export async function sendEmail(options: EmailOptions): Promise<void> {
       return;
     }
 
-    const fromEmail = process.env.EMAIL_FROM || 'Signal Service <onboarding@resend.dev>';
+    const fromEmail = getFromEmail();
 
     const { error } = await resend.emails.send({
       from: fromEmail,

@@ -187,7 +187,7 @@ export default function RegisterPage() {
 
   const description =
     step === "register"
-      ? "Start your SignalService workspace with secure access to trading signals and MT5 account tools."
+      ? "Start your Signal Service workspace with secure access to trading signals and MT5 account tools."
       : `Enter the 6-digit code sent to ${verificationEmail}.`;
 
   return (
