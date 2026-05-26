@@ -27,6 +27,10 @@ declare global {
   }
 }
 
+function isActiveUserStatus(status: string): boolean {
+  return status === 'ACTIVE';
+}
+
 // =============================================================================
 // API KEY AUTHENTICATION (for MT5 EAs)
 // =============================================================================
@@ -55,7 +59,7 @@ async function authenticateWithApiKey(apiKey: string): Promise<{
     return null;
   }
 
-  if (mt5Account.user.status === 'BANNED' || mt5Account.user.status === 'SUSPENDED') {
+  if (!isActiveUserStatus(mt5Account.user.status)) {
     return null;
   }
 
@@ -120,7 +124,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
       select: { id: true, email: true, role: true, status: true },
     });
 
-    if (!user || user.status === 'BANNED' || user.status === 'SUSPENDED') {
+    if (!user || !isActiveUserStatus(user.status)) {
       return res.status(401).json({ error: 'Account is not active' });
     }
 
@@ -158,7 +162,7 @@ export async function optionalAuth(req: Request, res: Response, next: NextFuncti
           select: { id: true, email: true, role: true, status: true },
         });
 
-        if (user && user.status === 'ACTIVE') {
+        if (user && isActiveUserStatus(user.status)) {
           req.user = { id: user.id, email: user.email, role: user.role };
         }
       }

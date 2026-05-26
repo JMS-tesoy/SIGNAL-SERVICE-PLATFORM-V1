@@ -47,6 +47,22 @@ interface TokenPayload {
   type: 'access' | 'refresh' | 'temp';
 }
 
+function getInactiveAccountMessage(status: User['status']): string | null {
+  if (status === 'PENDING_VERIFICATION') {
+    return 'Please verify your email before logging in.';
+  }
+
+  if (status === 'SUSPENDED') {
+    return 'Your account has been suspended.';
+  }
+
+  if (status === 'BANNED') {
+    return 'Your account has been banned.';
+  }
+
+  return null;
+}
+
 // =============================================================================
 // JWT CONFIGURATION
 // =============================================================================
@@ -248,11 +264,12 @@ export async function login(input: LoginInput): Promise<AuthResult> {
       };
     }
 
-    // Check account status
-    if (user.status === 'BANNED') {
+    // Check account status before verifying password or starting 2FA.
+    const inactiveAccountMessage = getInactiveAccountMessage(user.status);
+    if (inactiveAccountMessage) {
       return {
         success: false,
-        message: 'Your account has been suspended',
+        message: inactiveAccountMessage,
       };
     }
 
@@ -371,6 +388,14 @@ export async function verifyTwoFactorAndLogin(
       };
     }
 
+    const inactiveAccountMessage = getInactiveAccountMessage(user.status);
+    if (inactiveAccountMessage) {
+      return {
+        success: false,
+        message: inactiveAccountMessage,
+      };
+    }
+
     // Verify OTP based on method
     let verificationResult;
     if (method === 'TOTP') {
@@ -460,10 +485,18 @@ export async function resendTwoFactorOTP(
       },
     });
 
-    if (!user || user.status === 'BANNED' || user.status === 'SUSPENDED') {
+    if (!user) {
       return {
         success: false,
         message: 'Account is not active.',
+      };
+    }
+
+    const inactiveAccountMessage = getInactiveAccountMessage(user.status);
+    if (inactiveAccountMessage) {
+      return {
+        success: false,
+        message: inactiveAccountMessage,
       };
     }
 
@@ -537,6 +570,14 @@ export async function refreshAccessToken(refreshToken: string): Promise<AuthResu
       return {
         success: false,
         message: 'Session expired. Please login again.',
+      };
+    }
+
+    const inactiveAccountMessage = getInactiveAccountMessage(session.user.status);
+    if (inactiveAccountMessage) {
+      return {
+        success: false,
+        message: inactiveAccountMessage,
       };
     }
 
