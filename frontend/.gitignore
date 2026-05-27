@@ -1,3 +1,6 @@
-.vercel
-.env*.local
-.env.local
+# Next.js output for this app
+.next/
+out/
+
+# Vercel local project metadata
+.vercel/

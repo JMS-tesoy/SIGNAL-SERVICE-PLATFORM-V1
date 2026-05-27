@@ -1,32 +1,34 @@
 # Dependencies
 node_modules/
 .pnp
-.pnp.js
-
-.claude
+.pnp.*
 
 # Build outputs
 dist/
 build/
 .next/
 out/
-
-# Documentation drafts/local docs
-docs/*
-docs/Prisma Studio guide.md
+.vercel/
 
 # Environment files
 .env
-.env.local
-.env.*.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
+!.env.example
+!.env.*.example
 
-# IDE
+# Generated structure reports
+file-structure*.txt
+folder-structure*.txt
+
+# Local documentation drafts
+docs/
+
+# Local EA source versions
+EA's/*.mq5
+
+# IDE and OS files
 .idea/
 .vscode/
-.claude/settings.local.json
 *.swp
 *.swo
 .DS_Store
@@ -37,33 +39,24 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 
-# Testing
+# Testing and coverage
 coverage/
 .nyc_output/
 
-
-
-# Misc
+# Tooling caches
 *.tsbuildinfo
 .turbo/
-
-# Windows reserved names
-nul
-
-# EA source files are private/local only.
-EA's/*.mq5
-EA's/*.mqh
-
+.claude/
 CLAUDE_STATE.md
-
-.claude/skill/skill.md
 
 # Temporary/sensitive files
 temp_login.json
 provider_login.json
 **/temp_login.json
 D*temp_login.json
-.vercel
-.env*.local
 debug-login-frame-*.png
+
+# Windows reserved names
+nul
