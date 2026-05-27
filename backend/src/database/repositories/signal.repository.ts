@@ -14,6 +14,167 @@ export function findMasterAccountByUserAndAccountId(
   });
 }
 
+export function findSlaveAccountByUserAndAccountId(
+  userId: string,
+  accountId: string
+) {
+  return prisma.mT5Account.findFirst({
+    where: {
+      userId,
+      accountId,
+      accountType: "SLAVE",
+    },
+  });
+}
+
+export function markAccountConnected(mt5AccountId: string) {
+  return prisma.mT5Account.update({
+    where: { id: mt5AccountId },
+    data: {
+      isConnected: true,
+      lastHeartbeat: new Date(),
+    },
+  });
+}
+
+export function findAccountByUserAndAccountId(userId: string, accountId: string) {
+  return prisma.mT5Account.findFirst({
+    where: { userId, accountId },
+  });
+}
+
+export function updateAccountHeartbeat(
+  mt5AccountId: string,
+  data: { balance?: number; equity?: number; profit?: number }
+) {
+  return prisma.mT5Account.update({
+    where: { id: mt5AccountId },
+    data: {
+      isConnected: true,
+      lastHeartbeat: new Date(),
+      balance: data.balance,
+      equity: data.equity,
+      profit: data.profit,
+    },
+  });
+}
+
+export function findLatestAccountSnapshot(mt5AccountId: string) {
+  return prisma.accountSnapshot.findFirst({
+    where: { mt5AccountId },
+    orderBy: { snapshotDate: "desc" },
+  });
+}
+
+export function upsertDailyAccountSnapshot(input: {
+  mt5AccountId: string;
+  balance: number;
+  equity: number;
+  profit: number;
+  peakEquity: number;
+  snapshotDate: Date;
+}) {
+  const { mt5AccountId, balance, equity, profit, peakEquity, snapshotDate } =
+    input;
+
+  return prisma.accountSnapshot.upsert({
+    where: {
+      mt5AccountId_snapshotDate: {
+        mt5AccountId,
+        snapshotDate,
+      },
+    },
+    create: {
+      mt5AccountId,
+      balance,
+      equity,
+      profit,
+      peakEquity,
+      snapshotDate,
+    },
+    update: {
+      balance,
+      equity,
+      profit,
+      peakEquity,
+    },
+  });
+}
+
+export function findSignalHistory(input: {
+  where: Prisma.SignalWhereInput;
+  userId: string;
+  offset: number;
+  limit: number;
+}) {
+  const { where, userId, offset, limit } = input;
+
+  return Promise.all([
+    prisma.signal.findMany({
+      where,
+      include: {
+        executions: { where: { userId } },
+        provider: { select: { name: true, email: true } },
+      },
+      orderBy: { createdAt: "desc" },
+      skip: offset,
+      take: limit,
+    }),
+    prisma.signal.count({ where }),
+  ]);
+}
+
+export function findExecutionsForStatistics(userId: string, startDate: Date) {
+  return prisma.signalExecution.findMany({
+    where: { userId, receivedAt: { gte: startDate } },
+    include: { signal: true },
+  });
+}
+
+export function findUserMt5AccountIds(userId: string) {
+  return prisma.mT5Account.findMany({
+    where: { userId },
+    select: { id: true },
+  });
+}
+
+export function findAccountSnapshotsFromDate(
+  mt5AccountIds: string[],
+  startDate: Date
+) {
+  return prisma.accountSnapshot.findMany({
+    where: {
+      mt5AccountId: { in: mt5AccountIds },
+      snapshotDate: { gte: startDate },
+    },
+    orderBy: { snapshotDate: "asc" },
+  });
+}
+
+export function findInitialAccountSnapshot(mt5AccountIds: string[]) {
+  return prisma.accountSnapshot.findFirst({
+    where: { mt5AccountId: { in: mt5AccountIds } },
+    orderBy: { snapshotDate: "asc" },
+  });
+}
+
+export async function expirePendingSignals(now = new Date()) {
+  const result = await prisma.signal.updateMany({
+    where: {
+      status: { in: ["PENDING", "ACTIVE"] },
+      expiresAt: { lt: now },
+    },
+    data: { status: "EXPIRED" },
+  });
+
+  await prisma.signalExecution.updateMany({
+    where: { status: "PENDING", signal: { status: "EXPIRED" } },
+    data: { status: "EXPIRED" },
+  });
+
+  return result.count;
+}
+
 export function createSignal(data: {
   providerId: string;
   mt5AccountId: string;
@@ -34,6 +195,101 @@ export function createSignal(data: {
       ...data,
       status: "PENDING",
     },
+  });
+}
+
+export function findUserSubscriptionWithTier(userId: string) {
+  return prisma.subscription.findUnique({
+    where: { userId },
+    include: { tier: true },
+  });
+}
+
+export function findPendingExecutionsForSlaveAccount(
+  userId: string,
+  mt5AccountId: string,
+  delayedTime: Date
+) {
+  return prisma.signalExecution.findMany({
+    where: {
+      userId,
+      mt5AccountId,
+      status: "PENDING",
+      signal: {
+        status: { in: ["PENDING", "ACTIVE"] },
+        expiresAt: { gt: new Date() },
+        createdAt: { lte: delayedTime },
+      },
+    },
+    include: { signal: true },
+    orderBy: { receivedAt: "asc" },
+    take: 10,
+  });
+}
+
+export function findExecutionByIdForUser(
+  executionId: string,
+  userId: string,
+  mt5AccountId?: string
+) {
+  return prisma.signalExecution.findFirst({
+    where: {
+      id: executionId,
+      userId,
+      ...(mt5AccountId ? { mt5AccountId } : {}),
+    },
+  });
+}
+
+export function acknowledgePendingExecution(input: {
+  executionId: string;
+  userId: string;
+  status: ExecutionStatus;
+  details?: {
+    executedVolume?: number;
+    executedPrice?: number;
+    slippage?: number;
+    slaveTicket?: number;
+    errorCode?: number;
+    errorMessage?: string | null;
+  };
+  mt5AccountId?: string;
+}) {
+  const { executionId, userId, status, details, mt5AccountId } = input;
+
+  return prisma.signalExecution.updateMany({
+    where: {
+      id: executionId,
+      userId,
+      ...(mt5AccountId ? { mt5AccountId } : {}),
+      status: "PENDING",
+    },
+    data: {
+      status,
+      executedAt: status === "EXECUTED" ? new Date() : null,
+      acknowledgedAt: new Date(),
+      executedVolume: details?.executedVolume,
+      executedPrice: details?.executedPrice,
+      slippage: details?.slippage,
+      slaveTicket: details?.slaveTicket ? BigInt(details.slaveTicket) : null,
+      errorCode: details?.errorCode,
+      errorMessage: details?.errorMessage,
+    },
+  });
+}
+
+export function findExecutionStatusByIdForUser(
+  executionId: string,
+  userId: string,
+  mt5AccountId?: string
+) {
+  return prisma.signalExecution.findFirst({
+    where: {
+      id: executionId,
+      userId,
+      ...(mt5AccountId ? { mt5AccountId } : {}),
+    },
+    select: { status: true },
   });
 }
 

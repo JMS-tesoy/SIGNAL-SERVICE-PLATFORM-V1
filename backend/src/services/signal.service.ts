@@ -2,9 +2,8 @@
 // SIGNAL SERVICE - Trade Signal Processing
 // =============================================================================
 
-import prisma from '../config/database.js';
 import { checkSignalLimit } from './subscription.service.js';
-import { SignalAction, TradeType, SignalStatus, ExecutionStatus } from '@prisma/client';
+import { Prisma, SignalAction, TradeType, ExecutionStatus } from '@prisma/client';
 import { signalRepository } from '../database/repositories/index.js';
 
 // =============================================================================
@@ -97,46 +96,29 @@ export async function getPendingSignals(
     //   return { success: true, signals: [], message: 'Daily signal limit reached' };
     // }
 
-    const mt5Account = await prisma.mT5Account.findFirst({
-      where: { userId, accountId, accountType: 'SLAVE' },
-    });
+    const mt5Account = await signalRepository.findSlaveAccountByUserAndAccountId(
+      userId,
+      accountId
+    );
 
     if (!mt5Account) {
       return { success: false, signals: [], message: 'Slave account not found' };
     }
 
     // Update SLAVE account connection status when polling
-    await prisma.mT5Account.update({
-      where: { id: mt5Account.id },
-      data: {
-        isConnected: true,
-        lastHeartbeat: new Date(),
-      },
-    });
+    await signalRepository.markAccountConnected(mt5Account.id);
 
-    const subscription = await prisma.subscription.findUnique({
-      where: { userId },
-      include: { tier: true },
-    });
+    const subscription = await signalRepository.findUserSubscriptionWithTier(userId);
+    void subscription;
 
     const signalDelay = 0; // Bypassed for testing - was: subscription?.tier.signalDelay || 0
     const delayedTime = new Date(Date.now() - signalDelay * 1000);
 
-    const executions = await prisma.signalExecution.findMany({
-      where: {
-        userId,
-        mt5AccountId: mt5Account.id,
-        status: 'PENDING',
-        signal: {
-          status: { in: ['PENDING', 'ACTIVE'] },
-          expiresAt: { gt: new Date() },
-          createdAt: { lte: delayedTime },
-        },
-      },
-      include: { signal: true },
-      orderBy: { receivedAt: 'asc' },
-      take: 10,
-    });
+    const executions = await signalRepository.findPendingExecutionsForSlaveAccount(
+      userId,
+      mt5Account.id,
+      delayedTime
+    );
 
     const signals = executions.map((exec) => ({
       signal_id: exec.id,
@@ -181,9 +163,11 @@ export async function acknowledgeExecution(
 ): Promise<SignalResult> {
   try {
     // Check current execution state first (idempotency check)
-    const existing = await prisma.signalExecution.findFirst({
-      where: { id: executionId, userId, ...(mt5AccountId ? { mt5AccountId } : {}) },
-    });
+    const existing = await signalRepository.findExecutionByIdForUser(
+      executionId,
+      userId,
+      mt5AccountId
+    );
 
     if (!existing) {
       return { success: false, message: 'Execution not found' };
@@ -206,32 +190,26 @@ export async function acknowledgeExecution(
     else execStatus = 'PENDING';
 
     // Use conditional update to prevent race conditions
-    const result = await prisma.signalExecution.updateMany({
-      where: {
-        id: executionId,
-        userId,
-        ...(mt5AccountId ? { mt5AccountId } : {}),
-        status: 'PENDING', // Only update if still PENDING
+    const result = await signalRepository.acknowledgePendingExecution({
+      executionId,
+      userId,
+      status: execStatus,
+      details: {
+        ...details,
+        errorMessage:
+          details?.errorMessage ||
+          (status.includes(':') ? status.split(':')[1] : null),
       },
-      data: {
-        status: execStatus,
-        executedAt: execStatus === 'EXECUTED' ? new Date() : null,
-        acknowledgedAt: new Date(),
-        executedVolume: details?.executedVolume,
-        executedPrice: details?.executedPrice,
-        slippage: details?.slippage,
-        slaveTicket: details?.slaveTicket ? BigInt(details.slaveTicket) : null,
-        errorCode: details?.errorCode,
-        errorMessage: details?.errorMessage || (status.includes(':') ? status.split(':')[1] : null),
-      },
+      mt5AccountId,
     });
 
     // If no rows updated, another request already processed it
     if (result.count === 0) {
-      const current = await prisma.signalExecution.findFirst({
-        where: { id: executionId, userId, ...(mt5AccountId ? { mt5AccountId } : {}) },
-        select: { status: true },
-      });
+      const current = await signalRepository.findExecutionStatusByIdForUser(
+        executionId,
+        userId,
+        mt5AccountId
+      );
       return {
         success: true,
         message: `Already acknowledged as ${current?.status || 'UNKNOWN'}`
@@ -256,25 +234,17 @@ export async function updateHeartbeat(
 ): Promise<SignalResult> {
   try {
     // Get the MT5 account first (need the id for snapshot)
-    const mt5Account = await prisma.mT5Account.findFirst({
-      where: { userId, accountId },
-    });
+    const mt5Account = await signalRepository.findAccountByUserAndAccountId(
+      userId,
+      accountId
+    );
 
     if (!mt5Account) {
       return { success: false, message: 'Account not found' };
     }
 
     // Update the MT5Account with current values
-    await prisma.mT5Account.update({
-      where: { id: mt5Account.id },
-      data: {
-        isConnected: true,
-        lastHeartbeat: new Date(),
-        balance: data.balance,
-        equity: data.equity,
-        profit: data.profit,
-      },
-    });
+    await signalRepository.updateAccountHeartbeat(mt5Account.id, data);
 
     // Capture daily snapshot if we have balance/equity data
     if (data.balance !== undefined && data.equity !== undefined) {
@@ -308,10 +278,8 @@ async function captureBalanceSnapshot(
 
   try {
     // Get the latest snapshot for this account to determine peak equity
-    const latestSnapshot = await prisma.accountSnapshot.findFirst({
-      where: { mt5AccountId },
-      orderBy: { snapshotDate: 'desc' },
-    });
+    const latestSnapshot =
+      await signalRepository.findLatestAccountSnapshot(mt5AccountId);
 
     // Calculate peak equity (highest seen so far)
     const currentPeakEquity = latestSnapshot?.peakEquity
@@ -319,27 +287,13 @@ async function captureBalanceSnapshot(
       : equity;
 
     // Upsert today's snapshot (only one per day)
-    await prisma.accountSnapshot.upsert({
-      where: {
-        mt5AccountId_snapshotDate: {
-          mt5AccountId,
-          snapshotDate: today,
-        },
-      },
-      create: {
+    await signalRepository.upsertDailyAccountSnapshot({
         mt5AccountId,
         balance,
         equity,
         profit,
         peakEquity: currentPeakEquity,
         snapshotDate: today,
-      },
-      update: {
-        balance,
-        equity,
-        profit,
-        peakEquity: currentPeakEquity,
-      },
     });
   } catch (error) {
     // Log but don't fail heartbeat if snapshot fails
@@ -357,7 +311,7 @@ export async function getSignalHistory(
 ) {
   const { limit = 50, offset = 0, symbol, startDate, endDate } = options;
 
-  const where: any = {
+  const where: Prisma.SignalWhereInput = {
     OR: [{ providerId: userId }, { executions: { some: { userId } } }],
   };
 
@@ -368,19 +322,12 @@ export async function getSignalHistory(
     if (endDate) where.createdAt.lte = endDate;
   }
 
-  const [signals, total] = await Promise.all([
-    prisma.signal.findMany({
-      where,
-      include: {
-        executions: { where: { userId } },
-        provider: { select: { name: true, email: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip: offset,
-      take: limit,
-    }),
-    prisma.signal.count({ where }),
-  ]);
+  const [signals, total] = await signalRepository.findSignalHistory({
+    where,
+    userId,
+    offset,
+    limit,
+  });
 
   return { signals, total, limit, offset };
 }
@@ -400,10 +347,10 @@ export async function getSignalStatistics(userId: string, period: 'day' | 'week'
     case 'all': startDate = new Date(0); break;
   }
 
-  const executions = await prisma.signalExecution.findMany({
-    where: { userId, receivedAt: { gte: startDate } },
-    include: { signal: true },
-  });
+  const executions = await signalRepository.findExecutionsForStatistics(
+    userId,
+    startDate
+  );
 
   const stats = {
     totalSignals: executions.length,
@@ -446,10 +393,7 @@ export async function getPerformanceData(
     startDate.setHours(0, 0, 0, 0);
 
     // Get all MT5 accounts for this user
-    const mt5Accounts = await prisma.mT5Account.findMany({
-      where: { userId },
-      select: { id: true },
-    });
+    const mt5Accounts = await signalRepository.findUserMt5AccountIds(userId);
 
     if (mt5Accounts.length === 0) {
       return { success: true, data: [], message: 'No MT5 accounts found' };
@@ -458,23 +402,18 @@ export async function getPerformanceData(
     const accountIds = mt5Accounts.map((a) => a.id);
 
     // Get all snapshots for user's accounts in the period
-    const snapshots = await prisma.accountSnapshot.findMany({
-      where: {
-        mt5AccountId: { in: accountIds },
-        snapshotDate: { gte: startDate },
-      },
-      orderBy: { snapshotDate: 'asc' },
-    });
+    const snapshots = await signalRepository.findAccountSnapshotsFromDate(
+      accountIds,
+      startDate
+    );
 
     if (snapshots.length === 0) {
       return { success: true, data: [], message: 'No performance data available' };
     }
 
     // Get the initial balance (first snapshot or oldest available)
-    const initialSnapshot = await prisma.accountSnapshot.findFirst({
-      where: { mt5AccountId: { in: accountIds } },
-      orderBy: { snapshotDate: 'asc' },
-    });
+    const initialSnapshot =
+      await signalRepository.findInitialAccountSnapshot(accountIds);
 
     const initialBalance = initialSnapshot ? Number(initialSnapshot.balance) : 0;
 
@@ -535,15 +474,5 @@ export async function getPerformanceData(
 // =============================================================================
 
 export async function cleanupExpiredSignals(): Promise<number> {
-  const result = await prisma.signal.updateMany({
-    where: { status: { in: ['PENDING', 'ACTIVE'] }, expiresAt: { lt: new Date() } },
-    data: { status: 'EXPIRED' },
-  });
-
-  await prisma.signalExecution.updateMany({
-    where: { status: 'PENDING', signal: { status: 'EXPIRED' } },
-    data: { status: 'EXPIRED' },
-  });
-
-  return result.count;
+  return signalRepository.expirePendingSignals();
 }
