@@ -15,6 +15,99 @@ import {
 import { useAuthStore } from '@/lib/store';
 import { userApi } from '@/lib/api';
 
+const MAX_AVATAR_SOURCE_SIZE = 5 * 1024 * 1024;
+const MAX_AVATAR_DATA_URL_LENGTH = 450000;
+const AVATAR_MAX_DIMENSION = 512;
+const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const AVATAR_ACCEPT_TYPES = ALLOWED_AVATAR_TYPES.join(',');
+
+const formatFileSize = (bytes: number) => `${Math.round(bytes / 1024 / 1024)}MB`;
+
+const loadImage = (file: File): Promise<HTMLImageElement> => {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      resolve(image);
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Invalid image file'));
+    };
+
+    image.src = objectUrl;
+  });
+};
+
+const canvasToBlob = (
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality: number
+): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      blob => {
+        if (!blob) {
+          reject(new Error('Failed to optimize image'));
+          return;
+        }
+
+        resolve(blob);
+      },
+      type,
+      quality
+    );
+  });
+};
+
+const blobToDataUrl = (blob: Blob): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Failed to read optimized image'));
+    reader.readAsDataURL(blob);
+  });
+};
+
+const optimizeAvatar = async (file: File) => {
+  const image = await loadImage(file);
+  const largestSide = Math.max(image.width, image.height);
+  const initialScale = Math.min(1, AVATAR_MAX_DIMENSION / largestSide);
+  let width = Math.max(1, Math.round(image.width * initialScale));
+  let height = Math.max(1, Math.round(image.height * initialScale));
+  const qualitySteps = [0.82, 0.72, 0.62, 0.52];
+
+  while (width >= 128 && height >= 128) {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext('2d');
+    if (!context) {
+      throw new Error('Image optimization is not supported in this browser');
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+
+    for (const quality of qualitySteps) {
+      const blob = await canvasToBlob(canvas, 'image/webp', quality);
+      const dataUrl = await blobToDataUrl(blob);
+
+      if (dataUrl.length <= MAX_AVATAR_DATA_URL_LENGTH) {
+        return dataUrl;
+      }
+    }
+
+    width = Math.round(width * 0.8);
+    height = Math.round(height * 0.8);
+  }
+
+  throw new Error('Image is too large to optimize for an avatar');
+};
+
 export default function SettingsPage() {
   const { accessToken, user, setUser } = useAuthStore();
   const [profile, setProfile] = useState({
@@ -65,15 +158,18 @@ export default function SettingsPage() {
     const file = e.target.files?.[0];
     if (!file || !accessToken) return;
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      setMessage({ type: 'error', text: 'Please select an image file' });
+    if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
+      setMessage({ type: 'error', text: 'Please upload a JPG, PNG, GIF, or WebP image' });
+      e.target.value = '';
       return;
     }
 
-    // Validate file size (max 2MB)
-    if (file.size > 2 * 1024 * 1024) {
-      setMessage({ type: 'error', text: 'Image must be less than 2MB' });
+    if (file.size > MAX_AVATAR_SOURCE_SIZE) {
+      setMessage({
+        type: 'error',
+        text: `Image must be ${formatFileSize(MAX_AVATAR_SOURCE_SIZE)} or smaller`,
+      });
+      e.target.value = '';
       return;
     }
 
@@ -81,39 +177,33 @@ export default function SettingsPage() {
     setMessage({ type: '', text: '' });
 
     try {
-      // Convert to base64 for preview and storage
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64 = reader.result as string;
+      const optimizedAvatar = await optimizeAvatar(file);
 
-        // Update local state immediately for preview
-        setProfile(prev => ({ ...prev, avatar: base64 }));
+      setProfile(prev => ({ ...prev, avatar: optimizedAvatar }));
 
-        // Save to backend
-        const result = await userApi.updateProfile(accessToken, {
-          name: profile.name,
-          phone: profile.phone,
-          avatar: base64,
-        } as any);
+      const result = await userApi.updateProfile(accessToken, {
+        name: profile.name,
+        phone: profile.phone,
+        avatar: optimizedAvatar,
+      } as any);
 
-        if (result.error) {
-          setMessage({ type: 'error', text: result.error });
-          // Revert on error
-          setProfile(prev => ({ ...prev, avatar: '' }));
-        } else {
-          setMessage({ type: 'success', text: 'Avatar updated successfully' });
-          setUser({
-            ...user,
-            ...(result.data?.user || {}),
-            avatar: base64,
-          });
-        }
-        setIsUploadingAvatar(false);
-      };
-      reader.readAsDataURL(file);
+      if (result.error) {
+        setMessage({ type: 'error', text: result.error });
+        setProfile(prev => ({ ...prev, avatar: user?.avatar || '' }));
+      } else {
+        setMessage({ type: 'success', text: 'Avatar optimized and updated successfully' });
+        setUser({
+          ...user,
+          ...(result.data?.user || {}),
+          avatar: optimizedAvatar,
+        });
+      }
     } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to upload avatar' });
+      const error = err instanceof Error ? err.message : 'Failed to upload avatar';
+      setMessage({ type: 'error', text: error });
+    } finally {
       setIsUploadingAvatar(false);
+      e.target.value = '';
     }
   };
 
@@ -247,7 +337,7 @@ export default function SettingsPage() {
                 name="avatar"
                 aria-label="Upload profile photo"
                 type="file"
-                accept="image/*"
+                accept={AVATAR_ACCEPT_TYPES}
                 onChange={handleAvatarChange}
                 className="hidden"
                 disabled={isUploadingAvatar}
@@ -258,9 +348,10 @@ export default function SettingsPage() {
             {profile.avatar && (
               <button
                 type="button"
+                aria-label="Remove profile photo"
                 onClick={handleRemoveAvatar}
                 disabled={isUploadingAvatar}
-                className="absolute -top-1 -right-1 w-6 h-6 bg-accent-red rounded-full flex items-center justify-center text-white hover:bg-accent-red/80 transition-colors"
+                className="absolute -top-1 -right-1 w-6 h-6 bg-accent-red rounded-full flex items-center justify-center text-white opacity-0 pointer-events-none transition-all hover:bg-accent-red/80 group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -273,7 +364,7 @@ export default function SettingsPage() {
               Click on the avatar to upload a new photo
             </p>
             <p className="text-xs text-foreground-subtle">
-              JPG, PNG or GIF. Max 2MB.
+              JPG, PNG, GIF, or WebP. Max {formatFileSize(MAX_AVATAR_SOURCE_SIZE)}. Optimized before saving.
             </p>
           </div>
         </div>

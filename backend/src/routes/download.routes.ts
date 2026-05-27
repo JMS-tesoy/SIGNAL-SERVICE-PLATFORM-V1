@@ -7,6 +7,7 @@ import path from 'path';
 import fs from 'fs';
 import { authenticate } from '../middleware/auth.middleware.js';
 import { asyncHandler } from '../middleware/error.middleware.js';
+import { authRepository } from '../database/repositories/index.js';
 
 const router = Router();
 
@@ -24,20 +25,47 @@ const AVAILABLE_FILES = {
     filename: 'SignalReceiverEA.ex5',
     displayName: 'Signal Receiver EA',
     description: 'Expert Advisor for receiving trading signals in MetaTrader 5',
+    requiresPaidSubscription: false,
+  },
+  'signal-sender-ea': {
+    filename: 'SignalSenderEA.ex5',
+    displayName: 'Signal Sender EA',
+    description: 'Expert Advisor for sending trading signals from MetaTrader 5',
+    requiresPaidSubscription: true,
   },
 } as const;
+
+async function hasActivePaidSubscription(userId: string) {
+  const subscription = await authRepository.findActiveSubscriptionByUserId(userId);
+
+  if (!subscription || subscription.status !== 'ACTIVE') {
+    return false;
+  }
+
+  if (subscription.currentPeriodEnd < new Date()) {
+    return false;
+  }
+
+  return subscription.tier.name !== 'free';
+}
 
 // =============================================================================
 // GET AVAILABLE DOWNLOADS
 // =============================================================================
 
 router.get('/', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  const downloads = Object.entries(AVAILABLE_FILES).map(([id, file]) => ({
-    id,
-    name: file.displayName,
-    description: file.description,
-    filename: file.filename,
-  }));
+  const userHasPaidSubscription = req.user
+    ? await hasActivePaidSubscription(req.user.id)
+    : false;
+
+  const downloads = Object.entries(AVAILABLE_FILES)
+    .filter(([, file]) => !file.requiresPaidSubscription || userHasPaidSubscription)
+    .map(([id, file]) => ({
+      id,
+      name: file.displayName,
+      description: file.description,
+      filename: file.filename,
+    }));
 
   res.json({ downloads });
 }));
@@ -53,6 +81,18 @@ router.get('/:fileId', authenticate, asyncHandler(async (req: Request, res: Resp
 
   if (!fileInfo) {
     return res.status(404).json({ error: 'File not found' });
+  }
+
+  if (fileInfo.requiresPaidSubscription) {
+    const userHasPaidSubscription = req.user
+      ? await hasActivePaidSubscription(req.user.id)
+      : false;
+
+    if (!userHasPaidSubscription) {
+      return res.status(403).json({
+        error: 'An active paid subscription is required to download this file',
+      });
+    }
   }
 
   const filePath = DOWNLOAD_DIRS
