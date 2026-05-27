@@ -18,7 +18,7 @@ import { userApi } from '@/lib/api';
 const MAX_AVATAR_SOURCE_SIZE = 5 * 1024 * 1024;
 const MAX_AVATAR_DATA_URL_LENGTH = 450000;
 const AVATAR_MAX_DIMENSION = 512;
-const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_AVATAR_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 const AVATAR_ACCEPT_TYPES = ALLOWED_AVATAR_TYPES.join(',');
 
 const formatFileSize = (bytes: number) => `${Math.round(bytes / 1024 / 1024)}MB`;
@@ -119,15 +119,18 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
-    fetchProfile();
+    fetchProfile({ showLoading: true });
   }, [accessToken]);
 
-  const fetchProfile = async () => {
+  const fetchProfile = async ({ showLoading = false } = {}) => {
     if (!accessToken) return;
-    setIsLoading(true);
+    if (showLoading) {
+      setIsLoading(true);
+    }
 
     try {
       const result = await userApi.getProfile(accessToken);
@@ -146,11 +149,15 @@ export default function SettingsPage() {
           ...profileUser,
           avatar: profileUser.avatar || '',
         });
+
+        return profileUser;
       }
     } catch (err) {
       console.error('Failed to fetch profile:', err);
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -159,7 +166,7 @@ export default function SettingsPage() {
     if (!file || !accessToken) return;
 
     if (!ALLOWED_AVATAR_TYPES.includes(file.type)) {
-      setMessage({ type: 'error', text: 'Please upload a JPG, PNG, GIF, or WebP image' });
+      setMessage({ type: 'error', text: 'Please upload a JPG, PNG, or WebP image' });
       e.target.value = '';
       return;
     }
@@ -175,34 +182,37 @@ export default function SettingsPage() {
 
     setIsUploadingAvatar(true);
     setMessage({ type: '', text: '' });
+    setAvatarPreview('');
 
     try {
       const optimizedAvatar = await optimizeAvatar(file);
 
-      setProfile(prev => ({ ...prev, avatar: optimizedAvatar }));
+      setAvatarPreview(optimizedAvatar);
 
-      const result = await userApi.updateProfile(accessToken, {
-        name: profile.name,
-        phone: profile.phone,
-        avatar: optimizedAvatar,
-      } as any);
+      const result = await userApi.uploadAvatar(accessToken, optimizedAvatar);
 
       if (result.error) {
         setMessage({ type: 'error', text: result.error });
-        setProfile(prev => ({ ...prev, avatar: user?.avatar || '' }));
       } else {
-        setMessage({ type: 'success', text: 'Avatar optimized and updated successfully' });
-        setUser({
-          ...user,
-          ...(result.data?.user || {}),
-          avatar: optimizedAvatar,
-        });
+        if (result.data?.user) {
+          const uploadedUser = result.data.user;
+          setProfile(prev => ({ ...prev, avatar: uploadedUser.avatar || '' }));
+          setUser({
+            ...user,
+            ...uploadedUser,
+            avatar: uploadedUser.avatar || '',
+          });
+        }
+
+        await fetchProfile();
+        setMessage({ type: 'success', text: 'Profile photo updated' });
       }
     } catch (err) {
       const error = err instanceof Error ? err.message : 'Failed to upload avatar';
       setMessage({ type: 'error', text: error });
     } finally {
       setIsUploadingAvatar(false);
+      setAvatarPreview('');
       e.target.value = '';
     }
   };
@@ -212,22 +222,13 @@ export default function SettingsPage() {
 
     setIsUploadingAvatar(true);
     try {
-      const result = await userApi.updateProfile(accessToken, {
-        name: profile.name,
-        phone: profile.phone,
-        avatar: '',
-      } as any);
+      const result = await userApi.removeAvatar(accessToken);
 
       if (result.error) {
         setMessage({ type: 'error', text: result.error });
       } else {
-        setProfile(prev => ({ ...prev, avatar: '' }));
+        await fetchProfile();
         setMessage({ type: 'success', text: 'Avatar removed' });
-        setUser({
-          ...user,
-          ...(result.data?.user || {}),
-          avatar: '',
-        });
       }
     } catch (err) {
       setMessage({ type: 'error', text: 'Failed to remove avatar' });
@@ -257,7 +258,6 @@ export default function SettingsPage() {
           ...(result.data?.user || {}),
           name: profile.name,
           phone: profile.phone,
-          avatar: profile.avatar,
         });
       }
     } catch (err) {
@@ -314,9 +314,9 @@ export default function SettingsPage() {
         <div className="flex flex-col sm:flex-row items-center gap-6 mb-8 pb-6 border-b border-border">
           <div className="relative group">
             <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center">
-              {profile.avatar ? (
+              {avatarPreview || profile.avatar ? (
                 <img
-                  src={profile.avatar}
+                  src={avatarPreview || profile.avatar}
                   alt="Avatar"
                   className="w-full h-full object-cover"
                 />
@@ -345,7 +345,7 @@ export default function SettingsPage() {
             </label>
 
             {/* Remove button */}
-            {profile.avatar && (
+            {profile.avatar && !avatarPreview && (
               <button
                 type="button"
                 aria-label="Remove profile photo"
@@ -364,7 +364,7 @@ export default function SettingsPage() {
               Click on the avatar to upload a new photo
             </p>
             <p className="text-xs text-foreground-subtle">
-              JPG, PNG, GIF, or WebP. Max {formatFileSize(MAX_AVATAR_SOURCE_SIZE)}. Optimized before saving.
+              JPG, PNG, or WebP. Max {formatFileSize(MAX_AVATAR_SOURCE_SIZE)}. Optimized before saving.
             </p>
           </div>
         </div>

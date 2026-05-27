@@ -311,11 +311,24 @@ export const userApi = {
   getProfile: (token: string) =>
     apiFetch<{ user: any }>('/api/users/profile', { token }),
 
-  updateProfile: (token: string, data: { name?: string; phone?: string; avatar?: string }) =>
+  updateProfile: (token: string, data: { name?: string; phone?: string }) =>
     apiFetch<{ user: any; message: string }>('/api/users/profile', {
       method: 'PUT',
       token,
       body: JSON.stringify(data),
+    }),
+
+  uploadAvatar: (token: string, image: string) =>
+    apiFetch<{ user: any; avatar: string; message: string }>('/api/users/profile/avatar', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ image }),
+    }),
+
+  removeAvatar: (token: string) =>
+    apiFetch<{ user: any; message: string }>('/api/users/profile/avatar', {
+      method: 'DELETE',
+      token,
     }),
 
   changePassword: (token: string, currentPassword: string, newPassword: string) =>

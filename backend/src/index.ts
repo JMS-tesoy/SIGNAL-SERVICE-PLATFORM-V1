@@ -4,6 +4,7 @@
 
 import "dotenv/config";
 import express, { Request, Response } from "express";
+import path from "node:path";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
@@ -95,6 +96,13 @@ app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }));
 // JSON body parser
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true }));
+app.use(
+  "/uploads",
+  express.static(path.resolve(process.cwd(), "uploads"), {
+    immutable: true,
+    maxAge: "30d",
+  })
+);
 
 // Request logging
 app.use(requestLogger);

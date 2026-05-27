@@ -3,7 +3,7 @@ import prisma from "../client.js";
 type UpdateProfileData = {
   name?: string;
   phone?: string;
-  avatar?: string;
+  avatar?: string | null;
 };
 
 type AddMt5AccountData = {

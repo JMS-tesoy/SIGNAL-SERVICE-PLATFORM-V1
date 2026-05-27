@@ -76,12 +76,6 @@ export default function DashboardLayout({
         return;
       }
 
-      if (user) {
-        hydratedTokenRef.current = accessToken;
-        setLoading(false);
-        return;
-      }
-
       hydratedTokenRef.current = accessToken;
       const result = await userApi.getProfile(accessToken);
 
