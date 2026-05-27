@@ -5,6 +5,7 @@
 import prisma from '../config/database.js';
 import { checkSignalLimit } from './subscription.service.js';
 import { SignalAction, TradeType, SignalStatus, ExecutionStatus } from '@prisma/client';
+import { signalRepository } from '../database/repositories/index.js';
 
 // =============================================================================
 // TYPES
@@ -45,82 +46,39 @@ export async function receiveSignal(
   signal: IncomingSignal
 ): Promise<SignalResult> {
   try {
-    const mt5Account = await prisma.mT5Account.findFirst({
-      where: {
-        userId: providerId,
-        accountId: signal.accountId,
-        accountType: 'MASTER',
-      },
-    });
+    const mt5Account = await signalRepository.findMasterAccountByUserAndAccountId(
+      providerId,
+      signal.accountId
+    );
 
     if (!mt5Account) {
       return { success: false, message: 'Master account not found' };
     }
 
-    const newSignal = await prisma.signal.create({
-      data: {
-        providerId,
-        mt5AccountId: mt5Account.id,
-        action: signal.action.toUpperCase() as SignalAction,
-        symbol: signal.symbol,
-        type: signal.type.toUpperCase() as TradeType,
-        volume: signal.volume,
-        price: signal.price,
-        sl: signal.sl || null,
-        tp: signal.tp || null,
-        masterTicket: signal.ticket ? BigInt(signal.ticket) : null,
-        magic: signal.magic || null,
-        comment: signal.comment || null,
-        status: 'PENDING',
-        expiresAt: new Date(Date.now() + 120 * 1000), // 2 minutes expiry
-      },
+    const newSignal = await signalRepository.createSignal({
+      providerId,
+      mt5AccountId: mt5Account.id,
+      action: signal.action.toUpperCase() as SignalAction,
+      symbol: signal.symbol,
+      type: signal.type.toUpperCase() as TradeType,
+      volume: signal.volume,
+      price: signal.price,
+      sl: signal.sl || null,
+      tp: signal.tp || null,
+      masterTicket: signal.ticket ? BigInt(signal.ticket) : null,
+      magic: signal.magic || null,
+      comment: signal.comment || null,
+      expiresAt: new Date(Date.now() + 120 * 1000), // 2 minutes expiry
     });
 
-    await createExecutionsForSubscribers(newSignal.id, providerId);
+    await signalRepository.createPendingExecutionsForActiveSubscriberSlaveAccounts(
+      newSignal.id
+    );
 
     return { success: true, message: 'Signal received', signalId: newSignal.id };
   } catch (error) {
     console.error('Receive signal error:', error);
     return { success: false, message: 'Failed to process signal' };
-  }
-}
-
-// =============================================================================
-// CREATE EXECUTIONS FOR SUBSCRIBERS
-// =============================================================================
-
-async function createExecutionsForSubscribers(signalId: string, providerId: string): Promise<void> {
-  const subscribers = await prisma.subscription.findMany({
-    where: {
-      status: 'ACTIVE',
-      user: {
-        status: 'ACTIVE',
-        // Provider exclusion removed for testing - admin can receive own signals
-        // id: { not: providerId },
-        mt5Accounts: { some: { accountType: 'SLAVE' } },
-      },
-    },
-    include: {
-      user: {
-        include: {
-          mt5Accounts: { where: { accountType: 'SLAVE' } },
-        },
-      },
-      tier: true,
-    },
-  });
-
-  const executions = subscribers.flatMap((sub) =>
-    sub.user.mt5Accounts.map((account) => ({
-      signalId,
-      userId: sub.user.id,
-      mt5AccountId: account.id,
-      status: 'PENDING' as ExecutionStatus,
-    }))
-  );
-
-  if (executions.length > 0) {
-    await prisma.signalExecution.createMany({ data: executions, skipDuplicates: true });
   }
 }
 
