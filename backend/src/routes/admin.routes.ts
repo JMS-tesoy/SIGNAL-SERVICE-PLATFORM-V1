@@ -5,7 +5,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware.js';
 import { asyncHandler } from '../middleware/error.middleware.js';
-import prisma from '../config/database.js';
+import { adminRepository } from '../database/repositories/index.js';
 
 const router = Router();
 
@@ -24,18 +24,11 @@ router.get('/stats', asyncHandler(async (req: Request, res: Response) => {
     todaySignals,
     revenue,
   ] = await Promise.all([
-    prisma.user.count(),
-    prisma.subscription.count({ where: { status: 'ACTIVE' } }),
-    prisma.signal.count(),
-    prisma.signal.count({
-      where: {
-        createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) },
-      },
-    }),
-    prisma.payment.aggregate({
-      where: { status: 'SUCCEEDED' },
-      _sum: { amount: true },
-    }),
+    adminRepository.countUsers(),
+    adminRepository.countActiveSubscriptions(),
+    adminRepository.countSignals(),
+    adminRepository.countSignalsCreatedSince(new Date(new Date().setHours(0, 0, 0, 0))),
+    adminRepository.sumSucceededPaymentRevenue(),
   ]);
 
   res.json({
@@ -65,26 +58,8 @@ router.get('/users', asyncHandler(async (req: Request, res: Response) => {
   }
 
   const [users, total] = await Promise.all([
-    prisma.user.findMany({
-      where,
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        status: true,
-        role: true,
-        emailVerified: true,
-        createdAt: true,
-        lastLoginAt: true,
-        subscription: {
-          include: { tier: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    prisma.user.count({ where }),
+    adminRepository.findUsers(where, page, limit),
+    adminRepository.countUsersByFilter(where),
   ]);
 
   res.json({
@@ -102,20 +77,7 @@ router.get('/users', asyncHandler(async (req: Request, res: Response) => {
 router.get('/users/:userId', asyncHandler(async (req: Request, res: Response) => {
   const { userId } = req.params;
 
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: {
-      subscription: { include: { tier: true } },
-      payments: { orderBy: { createdAt: 'desc' }, take: 10 },
-      mt5Accounts: true,
-      _count: {
-        select: {
-          sentSignals: true,
-          executions: true,
-        },
-      },
-    },
-  });
+  const user = await adminRepository.findUserDetailsById(userId);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -136,15 +98,11 @@ router.patch('/users/:userId/status', asyncHandler(async (req: Request, res: Res
     return res.status(400).json({ error: 'Invalid status' });
   }
 
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: { status },
-    select: { id: true, email: true, status: true },
-  });
+  const user = await adminRepository.updateUserStatus(userId, status);
 
   // If banning/suspending, invalidate all sessions
   if (status !== 'ACTIVE') {
-    await prisma.session.deleteMany({ where: { userId } });
+    await adminRepository.deleteSessionsByUserId(userId);
   }
 
   res.json({ user, message: `User status updated to ${status}` });
@@ -163,16 +121,12 @@ router.patch('/users/:userId/role', asyncHandler(async (req: Request, res: Respo
   }
 
   // Prevent changing super admin role
-  const targetUser = await prisma.user.findUnique({ where: { id: userId } });
+  const targetUser = await adminRepository.findUserRoleById(userId);
   if (targetUser?.role === 'SUPER_ADMIN') {
     return res.status(403).json({ error: 'Cannot modify super admin role' });
   }
 
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: { role },
-    select: { id: true, email: true, role: true },
-  });
+  const user = await adminRepository.updateUserRole(userId, role);
 
   res.json({ user, message: `User role updated to ${role}` });
 }));
@@ -186,16 +140,8 @@ router.get('/signals', asyncHandler(async (req: Request, res: Response) => {
   const limit = parseInt(req.query.limit as string) || 50;
 
   const [signals, total] = await Promise.all([
-    prisma.signal.findMany({
-      include: {
-        provider: { select: { email: true, name: true } },
-        _count: { select: { executions: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-      skip: (page - 1) * limit,
-      take: limit,
-    }),
-    prisma.signal.count(),
+    adminRepository.findSignals(page, limit),
+    adminRepository.countSignals(),
   ]);
 
   res.json({
@@ -222,17 +168,13 @@ router.get('/signals', asyncHandler(async (req: Request, res: Response) => {
 // =============================================================================
 
 router.get('/tiers', asyncHandler(async (req: Request, res: Response) => {
-  const tiers = await prisma.subscriptionTier.findMany({
-    orderBy: { sortOrder: 'asc' },
-  });
+  const tiers = await adminRepository.findSubscriptionTiers();
 
   res.json({ tiers });
 }));
 
 router.post('/tiers', asyncHandler(async (req: Request, res: Response) => {
-  const tier = await prisma.subscriptionTier.create({
-    data: req.body,
-  });
+  const tier = await adminRepository.createSubscriptionTier(req.body);
 
   res.status(201).json({ tier });
 }));
@@ -240,10 +182,7 @@ router.post('/tiers', asyncHandler(async (req: Request, res: Response) => {
 router.put('/tiers/:tierId', asyncHandler(async (req: Request, res: Response) => {
   const { tierId } = req.params;
 
-  const tier = await prisma.subscriptionTier.update({
-    where: { id: tierId },
-    data: req.body,
-  });
+  const tier = await adminRepository.updateSubscriptionTier(tierId, req.body);
 
   res.json({ tier });
 }));
@@ -257,13 +196,7 @@ router.get('/revenue', asyncHandler(async (req: Request, res: Response) => {
   const startDate = new Date();
   startDate.setMonth(startDate.getMonth() - months);
 
-  const payments = await prisma.payment.findMany({
-    where: {
-      status: 'SUCCEEDED',
-      paidAt: { gte: startDate },
-    },
-    orderBy: { paidAt: 'asc' },
-  });
+  const payments = await adminRepository.findSucceededPaymentsSince(startDate);
 
   // Group by month
   const monthlyRevenue: Record<string, number> = {};
