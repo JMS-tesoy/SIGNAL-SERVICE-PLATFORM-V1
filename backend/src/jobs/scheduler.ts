@@ -4,9 +4,9 @@
 // =============================================================================
 
 import cron from 'node-cron';
-import prisma from '../config/database.js';
 import { sendEmail, emailTemplates } from '../services/email.service.js';
 import { cleanupExpiredSignals } from '../services/signal.service.js';
+import { schedulerRepository } from '../database/repositories/index.js';
 
 // =============================================================================
 // START ALL CRON JOBS
@@ -98,17 +98,10 @@ async function checkExpiringSubscriptions() {
   const threeDaysFromNow = new Date();
   threeDaysFromNow.setDate(threeDaysFromNow.getDate() + 3);
 
-  const expiringSubscriptions = await prisma.subscription.findMany({
-    where: {
-      status: 'ACTIVE',
-      cancelAtPeriodEnd: true,
-      currentPeriodEnd: {
-        gte: new Date(),
-        lte: threeDaysFromNow,
-      },
-    },
-    include: { user: true, tier: true },
-  });
+  const expiringSubscriptions =
+    await schedulerRepository.findExpiringCancelableSubscriptions(
+      threeDaysFromNow
+    );
 
   let emailsSent = 0;
   let skippedDuplicates = 0;
@@ -142,28 +135,18 @@ async function checkExpiringSubscriptions() {
   }
 
   // Downgrade expired subscriptions to free tier
-  const expiredSubscriptions = await prisma.subscription.findMany({
-    where: {
-      status: 'ACTIVE',
-      currentPeriodEnd: { lt: new Date() },
-      cancelAtPeriodEnd: true,
-    },
-  });
+  const expiredSubscriptions =
+    await schedulerRepository.findExpiredCancelableSubscriptions();
 
-  const freeTier = await prisma.subscriptionTier.findFirst({ where: { name: 'free' } });
+  const freeTier = await schedulerRepository.findFreeSubscriptionTier();
 
   if (freeTier) {
     for (const sub of expiredSubscriptions) {
-      await prisma.subscription.update({
-        where: { id: sub.id },
-        data: {
-          tierId: freeTier.id,
-          status: 'ACTIVE',
-          cancelAtPeriodEnd: false,
-          canceledAt: null,
-          currentPeriodStart: new Date(),
-          currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
-        },
+      await schedulerRepository.downgradeExpiredSubscriptionToFree({
+        subscriptionId: sub.id,
+        tierId: freeTier.id,
+        currentPeriodStart: new Date(),
+        currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
       });
       console.log(`Downgraded subscription ${sub.id} to free tier`);
     }
@@ -184,10 +167,7 @@ async function generateMonthlyReports() {
   const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59);
   const monthName = lastMonth.toLocaleString('en-US', { month: 'long', year: 'numeric' });
 
-  const users = await prisma.user.findMany({
-    where: { status: 'ACTIVE' },
-    include: { subscription: { include: { tier: true } } },
-  });
+  const users = await schedulerRepository.findActiveUsersWithSubscriptionTier();
 
   let newReports = 0;
   let updatedReports = 0;
@@ -195,23 +175,20 @@ async function generateMonthlyReports() {
   for (const user of users) {
     try {
       // Check if report already exists (to avoid duplicate emails on re-run)
-      const existingReport = await prisma.monthlyReport.findUnique({
-        where: {
-          userId_year_month: {
-            userId: user.id,
-            year: lastMonth.getFullYear(),
-            month: lastMonth.getMonth() + 1,
-          },
-        },
-      });
+      const reportYear = lastMonth.getFullYear();
+      const reportMonth = lastMonth.getMonth() + 1;
+      const existingReport = await schedulerRepository.findMonthlyReport(
+        user.id,
+        reportYear,
+        reportMonth
+      );
 
-      const executions = await prisma.signalExecution.findMany({
-        where: {
-          userId: user.id,
-          receivedAt: { gte: lastMonth, lte: lastMonthEnd },
-        },
-        include: { signal: true },
-      });
+      const executions =
+        await schedulerRepository.findSignalExecutionsForUserPeriod(
+          user.id,
+          lastMonth,
+          lastMonthEnd
+        );
 
       const totalSignals = executions.length;
       const executedSignals = executions.filter((e) => e.status === 'EXECUTED').length;
@@ -219,42 +196,21 @@ async function generateMonthlyReports() {
       const losingTrades = executedSignals - winningTrades;
       const winRate = executedSignals > 0 ? Math.round((winningTrades / executedSignals) * 100) : 0;
 
-      const mt5Account = await prisma.mT5Account.findFirst({
-        where: { userId: user.id },
-        orderBy: { updatedAt: 'desc' },
-      });
+      const mt5Account = await schedulerRepository.findLatestMt5AccountByUserId(
+        user.id
+      );
 
-      await prisma.monthlyReport.upsert({
-        where: {
-          userId_year_month: {
-            userId: user.id,
-            year: lastMonth.getFullYear(),
-            month: lastMonth.getMonth() + 1,
-          },
-        },
-        create: {
-          userId: user.id,
-          year: lastMonth.getFullYear(),
-          month: lastMonth.getMonth() + 1,
-          totalSignals,
-          executedSignals,
-          winningTrades,
-          losingTrades,
-          totalProfit: 0,
-          totalLoss: 0,
-          netProfit: 0,
-          endBalance: mt5Account?.balance,
-          endEquity: mt5Account?.equity,
-          subscriptionTier: user.subscription?.tier.name,
-        },
-        update: {
-          totalSignals,
-          executedSignals,
-          winningTrades,
-          losingTrades,
-          endBalance: mt5Account?.balance,
-          endEquity: mt5Account?.equity,
-        },
+      await schedulerRepository.upsertMonthlyReport({
+        userId: user.id,
+        year: reportYear,
+        month: reportMonth,
+        totalSignals,
+        executedSignals,
+        winningTrades,
+        losingTrades,
+        endBalance: mt5Account?.balance,
+        endEquity: mt5Account?.equity,
+        subscriptionTier: user.subscription?.tier.name,
       });
 
       // Only send email if this is a new report (not a re-run update)
@@ -285,16 +241,11 @@ async function checkDisconnectedAccounts() {
 
   const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
 
-  const disconnectedAccounts = await prisma.mT5Account.findMany({
-    where: { isConnected: true, lastHeartbeat: { lt: fifteenMinutesAgo } },
-    include: { user: true },
-  });
+  const disconnectedAccounts =
+    await schedulerRepository.findDisconnectedAccounts(fifteenMinutesAgo);
 
   for (const account of disconnectedAccounts) {
-    await prisma.mT5Account.update({
-      where: { id: account.id },
-      data: { isConnected: false },
-    });
+    await schedulerRepository.markMt5AccountDisconnected(account.id);
     console.log(`Marked account ${account.accountId} as disconnected`);
   }
 
@@ -308,10 +259,10 @@ async function checkDisconnectedAccounts() {
 async function updateAccountConnectionStatus() {
   const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
 
-  const result = await prisma.mT5Account.updateMany({
-    where: { isConnected: true, lastHeartbeat: { lt: fiveMinutesAgo } },
-    data: { isConnected: false },
-  });
+  const result =
+    await schedulerRepository.markStaleConnectedAccountsDisconnected(
+      fiveMinutesAgo
+    );
 
   if (result.count > 0) {
     console.log(`Marked ${result.count} accounts as disconnected`);
@@ -324,9 +275,7 @@ async function updateAccountConnectionStatus() {
 
 async function cleanupExpiredSessions() {
   console.log('Cleaning up expired sessions...');
-  const result = await prisma.session.deleteMany({
-    where: { expiresAt: { lt: new Date() } },
-  });
+  const result = await schedulerRepository.deleteExpiredSessions();
   console.log(`Deleted ${result.count} expired sessions`);
 }
 
@@ -338,11 +287,10 @@ async function cleanupExpiredOTPTokens() {
   console.log('Cleaning up expired OTP tokens...');
   const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-  const result = await prisma.oTPToken.deleteMany({
-    where: {
-      OR: [{ expiresAt: { lt: new Date() } }, { createdAt: { lt: oneDayAgo } }],
-    },
-  });
+  const result = await schedulerRepository.deleteExpiredOtpTokens(
+    new Date(),
+    oneDayAgo
+  );
   console.log(`Deleted ${result.count} expired OTP tokens`);
 }
 

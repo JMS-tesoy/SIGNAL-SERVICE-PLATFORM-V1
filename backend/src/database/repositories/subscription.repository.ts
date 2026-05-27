@@ -1,4 +1,4 @@
-import { BillingCycle, SubscriptionStatus } from "@prisma/client";
+import { BillingCycle, PaymentStatus, SubscriptionStatus } from "@prisma/client";
 import prisma from "../../config/database.js";
 
 export function findActiveSubscriptionTiers() {
@@ -37,6 +37,12 @@ export function findUserById(userId: string) {
 export function findSubscriptionTierById(tierId: string) {
   return prisma.subscriptionTier.findUnique({
     where: { id: tierId },
+  });
+}
+
+export function findFreeSubscriptionTier() {
+  return prisma.subscriptionTier.findFirst({
+    where: { name: "free" },
   });
 }
 
@@ -142,5 +148,154 @@ export function countSignalExecutionsSince(userId: string, receivedAfter: Date) 
       userId,
       receivedAt: { gte: receivedAfter },
     },
+  });
+}
+
+export function upsertCheckoutSubscription(input: {
+  userId: string;
+  tierId: string;
+  billingCycle: BillingCycle;
+  stripeCustomerId: string;
+  stripeSubscriptionId: string;
+  currentPeriodStart: Date;
+  currentPeriodEnd: Date;
+}) {
+  const {
+    userId,
+    tierId,
+    billingCycle,
+    stripeCustomerId,
+    stripeSubscriptionId,
+    currentPeriodStart,
+    currentPeriodEnd,
+  } = input;
+
+  return prisma.subscription.upsert({
+    where: { userId },
+    create: {
+      userId,
+      tierId,
+      billingCycle,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      status: "ACTIVE",
+      currentPeriodStart,
+      currentPeriodEnd,
+    },
+    update: {
+      tierId,
+      billingCycle,
+      stripeCustomerId,
+      stripeSubscriptionId,
+      status: "ACTIVE",
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
+    },
+  });
+}
+
+export function findSubscriptionByStripeSubscriptionId(
+  stripeSubscriptionId: string
+) {
+  return prisma.subscription.findFirst({
+    where: { stripeSubscriptionId },
+  });
+}
+
+export function updateStripeSubscriptionPeriod(input: {
+  id: string;
+  status: SubscriptionStatus;
+  currentPeriodStart: Date;
+  currentPeriodEnd: Date;
+  cancelAtPeriodEnd: boolean;
+}) {
+  const {
+    id,
+    status,
+    currentPeriodStart,
+    currentPeriodEnd,
+    cancelAtPeriodEnd,
+  } = input;
+
+  return prisma.subscription.update({
+    where: { id },
+    data: {
+      status,
+      currentPeriodStart,
+      currentPeriodEnd,
+      cancelAtPeriodEnd,
+    },
+  });
+}
+
+export function downgradeSubscriptionToFreeTier(
+  subscriptionId: string,
+  tierId: string
+) {
+  return prisma.subscription.update({
+    where: { id: subscriptionId },
+    data: {
+      tierId,
+      status: "ACTIVE",
+      stripeSubscriptionId: null,
+      cancelAtPeriodEnd: false,
+      canceledAt: null,
+    },
+  });
+}
+
+export function markSubscriptionCanceled(subscriptionId: string) {
+  return prisma.subscription.update({
+    where: { id: subscriptionId },
+    data: {
+      status: "CANCELED",
+    },
+  });
+}
+
+export function findPaymentByStripeInvoiceId(
+  stripeInvoiceId: string,
+  status?: PaymentStatus
+) {
+  return prisma.payment.findFirst({
+    where: {
+      stripeInvoiceId,
+      ...(status ? { status } : {}),
+    },
+  });
+}
+
+export function findSubscriptionByStripeCustomerIdWithUser(
+  stripeCustomerId: string
+) {
+  return prisma.subscription.findFirst({
+    where: { stripeCustomerId },
+    include: { user: true },
+  });
+}
+
+export function createPayment(input: {
+  userId: string;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  stripePaymentId?: string;
+  stripeInvoiceId: string;
+  description: string;
+  paidAt?: Date;
+  failedAt?: Date;
+}) {
+  return prisma.payment.create({
+    data: input,
+  });
+}
+
+export function updateSubscriptionStatus(
+  subscriptionId: string,
+  status: SubscriptionStatus
+) {
+  return prisma.subscription.update({
+    where: { id: subscriptionId },
+    data: { status },
   });
 }

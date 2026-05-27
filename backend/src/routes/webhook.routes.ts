@@ -4,9 +4,10 @@
 
 import { Router, Request, Response } from "express";
 import Stripe from "stripe";
-import prisma from "../config/database.js";
 import { sendEmail, emailTemplates } from "../services/email.service.js";
 import { getSiteUrl } from "../lib/site-url.js";
+import { BillingCycle, SubscriptionStatus } from "@prisma/client";
+import { subscriptionRepository } from "../database/repositories/index.js";
 
 const router = Router();
 
@@ -124,39 +125,26 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
   }
 
   // Update subscription in database
-  await prisma.subscription.upsert({
-    where: { userId },
-    create: {
-      userId,
-      tierId,
-      billingCycle: (billingCycle as any) || "MONTHLY",
-      stripeCustomerId: session.customer as string,
-      stripeSubscriptionId: session.subscription as string,
-      status: "ACTIVE",
-      currentPeriodStart: new Date(),
-      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-    },
-    update: {
-      tierId,
-      billingCycle: (billingCycle as any) || "MONTHLY",
-      stripeCustomerId: session.customer as string,
-      stripeSubscriptionId: session.subscription as string,
-      status: "ACTIVE",
-      cancelAtPeriodEnd: false,
-      canceledAt: null,
-    },
+  const currentPeriodEnd = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+
+  await subscriptionRepository.upsertCheckoutSubscription({
+    userId,
+    tierId,
+    billingCycle: (billingCycle as BillingCycle) || "MONTHLY",
+    stripeCustomerId: session.customer as string,
+    stripeSubscriptionId: session.subscription as string,
+    currentPeriodStart: new Date(),
+    currentPeriodEnd,
   });
 
   // Send confirmation email
-  const user = await prisma.user.findUnique({ where: { id: userId } });
-  const tier = await prisma.subscriptionTier.findUnique({
-    where: { id: tierId },
-  });
+  const user = await subscriptionRepository.findUserById(userId);
+  const tier = await subscriptionRepository.findSubscriptionTierById(tierId);
 
   if (user && tier) {
     const emailData = emailTemplates.subscriptionConfirmed(
       tier.displayName,
-      new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
+      currentPeriodEnd
     );
     await sendEmail({
       to: user.email,
@@ -170,9 +158,10 @@ async function handleCheckoutComplete(session: Stripe.Checkout.Session) {
 
 async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
   // Find subscription by Stripe ID
-  const dbSubscription = await prisma.subscription.findFirst({
-    where: { stripeSubscriptionId: subscription.id },
-  });
+  const dbSubscription =
+    await subscriptionRepository.findSubscriptionByStripeSubscriptionId(
+      subscription.id
+    );
 
   if (!dbSubscription) {
     console.error("Subscription not found:", subscription.id);
@@ -180,7 +169,7 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
   }
 
   // Map Stripe status to our status
-  let status: "ACTIVE" | "PAST_DUE" | "CANCELED" | "EXPIRED" | "TRIALING";
+  let status: SubscriptionStatus;
   switch (subscription.status) {
     case "active":
       status = "ACTIVE";
@@ -198,51 +187,37 @@ async function handleSubscriptionUpdate(subscription: Stripe.Subscription) {
       status = "ACTIVE";
   }
 
-  await prisma.subscription.update({
-    where: { id: dbSubscription.id },
-    data: {
-      status,
-      currentPeriodStart: new Date(subscription.current_period_start * 1000),
-      currentPeriodEnd: new Date(subscription.current_period_end * 1000),
-      cancelAtPeriodEnd: subscription.cancel_at_period_end,
-    },
+  await subscriptionRepository.updateStripeSubscriptionPeriod({
+    id: dbSubscription.id,
+    status,
+    currentPeriodStart: new Date(subscription.current_period_start * 1000),
+    currentPeriodEnd: new Date(subscription.current_period_end * 1000),
+    cancelAtPeriodEnd: subscription.cancel_at_period_end,
   });
 
   console.log(`Subscription updated: ${subscription.id} -> ${status}`);
 }
 
 async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
-  const dbSubscription = await prisma.subscription.findFirst({
-    where: { stripeSubscriptionId: subscription.id },
-  });
+  const dbSubscription =
+    await subscriptionRepository.findSubscriptionByStripeSubscriptionId(
+      subscription.id
+    );
 
   if (!dbSubscription) {
     return;
   }
 
   // Downgrade to free tier
-  const freeTier = await prisma.subscriptionTier.findFirst({
-    where: { name: "free" },
-  });
+  const freeTier = await subscriptionRepository.findFreeSubscriptionTier();
 
   if (freeTier) {
-    await prisma.subscription.update({
-      where: { id: dbSubscription.id },
-      data: {
-        tierId: freeTier.id,
-        status: "ACTIVE",
-        stripeSubscriptionId: null,
-        cancelAtPeriodEnd: false,
-        canceledAt: null,
-      },
-    });
+    await subscriptionRepository.downgradeSubscriptionToFreeTier(
+      dbSubscription.id,
+      freeTier.id
+    );
   } else {
-    await prisma.subscription.update({
-      where: { id: dbSubscription.id },
-      data: {
-        status: "CANCELED",
-      },
-    });
+    await subscriptionRepository.markSubscriptionCanceled(dbSubscription.id);
   }
 
   console.log(`Subscription deleted: ${subscription.id}`);
@@ -252,9 +227,9 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
   const customerId = invoice.customer as string;
 
   // Check if this invoice was already processed (database-level idempotency)
-  const existingPayment = await prisma.payment.findFirst({
-    where: { stripeInvoiceId: invoice.id },
-  });
+  const existingPayment = await subscriptionRepository.findPaymentByStripeInvoiceId(
+    invoice.id
+  );
 
   if (existingPayment) {
     console.log(`Invoice ${invoice.id} already processed, skipping`);
@@ -262,27 +237,25 @@ async function handleInvoicePaid(invoice: Stripe.Invoice) {
   }
 
   // Find subscription by customer ID
-  const subscription = await prisma.subscription.findFirst({
-    where: { stripeCustomerId: customerId },
-    include: { user: true },
-  });
+  const subscription =
+    await subscriptionRepository.findSubscriptionByStripeCustomerIdWithUser(
+      customerId
+    );
 
   if (!subscription) {
     return;
   }
 
   // Record payment
-  await prisma.payment.create({
-    data: {
-      userId: subscription.userId,
-      amount: invoice.amount_paid / 100,
-      currency: invoice.currency.toUpperCase(),
-      status: "SUCCEEDED",
-      stripePaymentId: invoice.payment_intent as string,
-      stripeInvoiceId: invoice.id,
-      description: `Subscription payment`,
-      paidAt: new Date(),
-    },
+  await subscriptionRepository.createPayment({
+    userId: subscription.userId,
+    amount: invoice.amount_paid / 100,
+    currency: invoice.currency.toUpperCase(),
+    status: "SUCCEEDED",
+    stripePaymentId: invoice.payment_intent as string,
+    stripeInvoiceId: invoice.id,
+    description: "Subscription payment",
+    paidAt: new Date(),
   });
 
   // Send receipt email
@@ -304,42 +277,41 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice) {
   const customerId = invoice.customer as string;
 
   // Check if this failed invoice was already recorded (database-level idempotency)
-  const existingPayment = await prisma.payment.findFirst({
-    where: { stripeInvoiceId: invoice.id, status: "FAILED" },
-  });
+  const existingPayment = await subscriptionRepository.findPaymentByStripeInvoiceId(
+    invoice.id,
+    "FAILED"
+  );
 
   if (existingPayment) {
     console.log(`Failed invoice ${invoice.id} already recorded, skipping`);
     return;
   }
 
-  const subscription = await prisma.subscription.findFirst({
-    where: { stripeCustomerId: customerId },
-    include: { user: true },
-  });
+  const subscription =
+    await subscriptionRepository.findSubscriptionByStripeCustomerIdWithUser(
+      customerId
+    );
 
   if (!subscription) {
     return;
   }
 
   // Record failed payment
-  await prisma.payment.create({
-    data: {
-      userId: subscription.userId,
-      amount: invoice.amount_due / 100,
-      currency: invoice.currency.toUpperCase(),
-      status: "FAILED",
-      stripeInvoiceId: invoice.id,
-      description: `Failed subscription payment`,
-      failedAt: new Date(),
-    },
+  await subscriptionRepository.createPayment({
+    userId: subscription.userId,
+    amount: invoice.amount_due / 100,
+    currency: invoice.currency.toUpperCase(),
+    status: "FAILED",
+    stripeInvoiceId: invoice.id,
+    description: "Failed subscription payment",
+    failedAt: new Date(),
   });
 
   // Update subscription status
-  await prisma.subscription.update({
-    where: { id: subscription.id },
-    data: { status: "PAST_DUE" },
-  });
+  await subscriptionRepository.updateSubscriptionStatus(
+    subscription.id,
+    "PAST_DUE"
+  );
 
   // Send notification email
   await sendEmail({
