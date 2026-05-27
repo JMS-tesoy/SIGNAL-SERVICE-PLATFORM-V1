@@ -18,6 +18,49 @@ interface NotificationContext {
   timestamp?: Date;
 }
 
+type NotificationTemplate = {
+  subject: string;
+  html: string;
+};
+
+async function sendNotificationEmail(
+  email: string,
+  template: NotificationTemplate,
+  successMessage: string
+) {
+  await sendEmail({
+    to: email,
+    subject: template.subject,
+    html: template.html,
+  });
+
+  console.log(successMessage);
+}
+
+async function safelySendNotification(
+  failureMessage: string,
+  send: () => Promise<void>
+) {
+  try {
+    await send();
+  } catch (error) {
+    console.error(failureMessage, error);
+  }
+}
+
+function withCurrentTimestamp(
+  context: NotificationContext
+): NotificationContext {
+  return {
+    ...context,
+    timestamp: new Date(),
+  };
+}
+
+function getDeviceFromUserAgent(userAgent?: string) {
+  return userAgent?.includes('Mobile') ? 'Mobile Device' : 'Desktop';
+}
+
 // =============================================================================
 // NOTIFICATION TEMPLATES
 // =============================================================================
@@ -366,26 +409,21 @@ export async function notifyNewLogin(
   name: string,
   context: NotificationContext
 ): Promise<void> {
-  try {
-    // Get device info from user agent
-    const device = context.userAgent?.includes('Mobile') ? 'Mobile Device' : 'Desktop';
+  return safelySendNotification('Failed to send new login notification:', async () => {
+    const template = notificationTemplates.newLogin(
+      name,
+      withCurrentTimestamp({
+        ...context,
+        device: getDeviceFromUserAgent(context.userAgent),
+      })
+    );
 
-    const template = notificationTemplates.newLogin(name, {
-      ...context,
-      device,
-      timestamp: new Date(),
-    });
-
-    await sendEmail({
-      to: email,
-      subject: template.subject,
-      html: template.html,
-    });
-
-    console.log(`New login notification sent to ${email}`);
-  } catch (error) {
-    console.error('Failed to send new login notification:', error);
-  }
+    await sendNotificationEmail(
+      email,
+      template,
+      `New login notification sent to ${email}`
+    );
+  });
 }
 
 export async function notifyPasswordChanged(
@@ -394,22 +432,18 @@ export async function notifyPasswordChanged(
   name: string,
   context: NotificationContext
 ): Promise<void> {
-  try {
-    const template = notificationTemplates.passwordChanged(name, {
-      ...context,
-      timestamp: new Date(),
-    });
+  return safelySendNotification('Failed to send password change notification:', async () => {
+    const template = notificationTemplates.passwordChanged(
+      name,
+      withCurrentTimestamp(context)
+    );
 
-    await sendEmail({
-      to: email,
-      subject: template.subject,
-      html: template.html,
-    });
-
-    console.log(`Password change notification sent to ${email}`);
-  } catch (error) {
-    console.error('Failed to send password change notification:', error);
-  }
+    await sendNotificationEmail(
+      email,
+      template,
+      `Password change notification sent to ${email}`
+    );
+  });
 }
 
 export async function notifyTwoFactorEnabled(
@@ -417,19 +451,15 @@ export async function notifyTwoFactorEnabled(
   email: string,
   name: string
 ): Promise<void> {
-  try {
+  return safelySendNotification('Failed to send 2FA enabled notification:', async () => {
     const template = notificationTemplates.twoFactorEnabled(name);
 
-    await sendEmail({
-      to: email,
-      subject: template.subject,
-      html: template.html,
-    });
-
-    console.log(`2FA enabled notification sent to ${email}`);
-  } catch (error) {
-    console.error('Failed to send 2FA enabled notification:', error);
-  }
+    await sendNotificationEmail(
+      email,
+      template,
+      `2FA enabled notification sent to ${email}`
+    );
+  });
 }
 
 export async function notifyTwoFactorDisabled(
@@ -438,22 +468,18 @@ export async function notifyTwoFactorDisabled(
   name: string,
   context: NotificationContext
 ): Promise<void> {
-  try {
-    const template = notificationTemplates.twoFactorDisabled(name, {
-      ...context,
-      timestamp: new Date(),
-    });
+  return safelySendNotification('Failed to send 2FA disabled notification:', async () => {
+    const template = notificationTemplates.twoFactorDisabled(
+      name,
+      withCurrentTimestamp(context)
+    );
 
-    await sendEmail({
-      to: email,
-      subject: template.subject,
-      html: template.html,
-    });
-
-    console.log(`2FA disabled notification sent to ${email}`);
-  } catch (error) {
-    console.error('Failed to send 2FA disabled notification:', error);
-  }
+    await sendNotificationEmail(
+      email,
+      template,
+      `2FA disabled notification sent to ${email}`
+    );
+  });
 }
 
 export async function notifyEmailVerified(
@@ -461,19 +487,15 @@ export async function notifyEmailVerified(
   email: string,
   name: string
 ): Promise<void> {
-  try {
+  return safelySendNotification('Failed to send email verified notification:', async () => {
     const template = notificationTemplates.emailVerified(name);
 
-    await sendEmail({
-      to: email,
-      subject: template.subject,
-      html: template.html,
-    });
-
-    console.log(`Email verified notification sent to ${email}`);
-  } catch (error) {
-    console.error('Failed to send email verified notification:', error);
-  }
+    await sendNotificationEmail(
+      email,
+      template,
+      `Email verified notification sent to ${email}`
+    );
+  });
 }
 
 export async function notifySessionsRevoked(
@@ -482,19 +504,15 @@ export async function notifySessionsRevoked(
   name: string,
   sessionsCount: number
 ): Promise<void> {
-  try {
+  return safelySendNotification('Failed to send sessions revoked notification:', async () => {
     const template = notificationTemplates.sessionRevoked(name, sessionsCount);
 
-    await sendEmail({
-      to: email,
-      subject: template.subject,
-      html: template.html,
-    });
-
-    console.log(`Sessions revoked notification sent to ${email}`);
-  } catch (error) {
-    console.error('Failed to send sessions revoked notification:', error);
-  }
+    await sendNotificationEmail(
+      email,
+      template,
+      `Sessions revoked notification sent to ${email}`
+    );
+  });
 }
 
 export async function notifyAccountSuspended(
@@ -503,19 +521,15 @@ export async function notifyAccountSuspended(
   name: string,
   reason: string
 ): Promise<void> {
-  try {
+  return safelySendNotification('Failed to send account suspended notification:', async () => {
     const template = notificationTemplates.accountSuspended(name, reason);
 
-    await sendEmail({
-      to: email,
-      subject: template.subject,
-      html: template.html,
-    });
-
-    console.log(`Account suspended notification sent to ${email}`);
-  } catch (error) {
-    console.error('Failed to send account suspended notification:', error);
-  }
+    await sendNotificationEmail(
+      email,
+      template,
+      `Account suspended notification sent to ${email}`
+    );
+  });
 }
 
 export async function notifySuspiciousActivity(
@@ -525,22 +539,19 @@ export async function notifySuspiciousActivity(
   activity: string,
   context: NotificationContext
 ): Promise<void> {
-  try {
-    const template = notificationTemplates.suspiciousActivity(name, activity, {
-      ...context,
-      timestamp: new Date(),
-    });
+  return safelySendNotification('Failed to send suspicious activity notification:', async () => {
+    const template = notificationTemplates.suspiciousActivity(
+      name,
+      activity,
+      withCurrentTimestamp(context)
+    );
 
-    await sendEmail({
-      to: email,
-      subject: template.subject,
-      html: template.html,
-    });
-
-    console.log(`Suspicious activity notification sent to ${email}`);
-  } catch (error) {
-    console.error('Failed to send suspicious activity notification:', error);
-  }
+    await sendNotificationEmail(
+      email,
+      template,
+      `Suspicious activity notification sent to ${email}`
+    );
+  });
 }
 
 // =============================================================================
