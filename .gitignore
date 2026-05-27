@@ -50,7 +50,9 @@ coverage/
 *.tsbuildinfo
 .turbo/
 .claude/
-CLAUDE_STATE.md
+.codex/
+AGENTS.md
+codex-skills-package.zip
 
 # Temporary/sensitive files
 temp_login.json
