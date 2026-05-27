@@ -6,7 +6,6 @@ import {
   Shield,
   Smartphone,
   Mail,
-  MessageSquare,
   Key,
   Loader2,
   CheckCircle,
@@ -14,12 +13,15 @@ import {
   Copy,
   Eye,
   EyeOff,
+  LogOut,
+  Monitor,
+  Trash2,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
-import { otpApi } from '@/lib/api';
+import { securityApi, userApi } from '@/lib/api';
 
 export default function SecurityPage() {
-  const { accessToken, user } = useAuthStore();
+  const { accessToken } = useAuthStore();
   const [status, setStatus] = useState<{
     twoFactorEnabled: boolean;
     twoFactorMethod: string | null;
@@ -36,12 +38,38 @@ export default function SecurityPage() {
   const [backupCodes, setBackupCodes] = useState<string[]>([]);
   const [verifyCode, setVerifyCode] = useState('');
   const [disablePassword, setDisablePassword] = useState('');
+  const [passwords, setPasswords] = useState({
+    current: '',
+    new: '',
+    confirm: '',
+  });
+  const [visiblePasswordFields, setVisiblePasswordFields] = useState({
+    current: false,
+    new: false,
+    confirm: false,
+  });
+  const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [showDisable, setShowDisable] = useState(false);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [sessionActionId, setSessionActionId] = useState<string | null>(null);
+
+  const passwordChecks = [
+    { label: 'At least 8 characters', passed: passwords.new.length >= 8 },
+    { label: 'One uppercase letter', passed: /[A-Z]/.test(passwords.new) },
+    { label: 'One lowercase letter', passed: /[a-z]/.test(passwords.new) },
+    { label: 'One number', passed: /[0-9]/.test(passwords.new) },
+    { label: 'One symbol', passed: /[^A-Za-z0-9]/.test(passwords.new) },
+  ];
+  const newPasswordIsStrong = passwordChecks.every((check) => check.passed);
+  const newPasswordsMatch = Boolean(passwords.confirm) && passwords.new === passwords.confirm;
 
   useEffect(() => {
     fetchStatus();
+    fetchSessions();
   }, [accessToken]);
 
   useEffect(() => {
@@ -74,9 +102,18 @@ export default function SecurityPage() {
     setIsLoading(true);
 
     try {
-      const result = await otpApi.getStatus(accessToken);
-      if (result.data) {
-        setStatus({ ...result.data, twoFactorMethod: result.data.twoFactorMethod || null, hasPhone: false, });
+      const [twoFactorResult, emailResult] = await Promise.all([
+        securityApi.get2FAStatus(accessToken),
+        securityApi.getEmailStatus(accessToken),
+      ]);
+
+      if (twoFactorResult.data || emailResult.data) {
+        setStatus({
+          twoFactorEnabled: Boolean(twoFactorResult.data?.enabled),
+          twoFactorMethod: twoFactorResult.data?.method || null,
+          emailVerified: Boolean(emailResult.data?.verified),
+          hasPhone: false,
+        });
       }
     } catch (err) {
       console.error('Failed to fetch 2FA status:', err);
@@ -91,7 +128,7 @@ export default function SecurityPage() {
     setError('');
 
     try {
-      const result = await otpApi.setupTOTP(accessToken);
+      const result = await securityApi.setupTOTP(accessToken);
       if (result.data) {
         setTotpData(result.data);
         setSetupStep('setup');
@@ -119,7 +156,7 @@ export default function SecurityPage() {
     setError('');
 
     try {
-      const result = await otpApi.enableTOTP(accessToken, verifyCode);
+      const result = await securityApi.enableTOTP(accessToken, verifyCode);
       if (result.data?.backupCodes) {
         setBackupCodes(result.data.backupCodes);
         setSetupStep('backup');
@@ -141,7 +178,7 @@ export default function SecurityPage() {
     setError('');
 
     try {
-      const result = await otpApi.disableTOTP(accessToken, disablePassword);
+      const result = await securityApi.disable2FA(accessToken, disablePassword);
       if (result.error) {
         setError(result.error);
       } else {
@@ -154,6 +191,117 @@ export default function SecurityPage() {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const fetchSessions = async () => {
+    if (!accessToken) return;
+    setSessionsLoading(true);
+
+    try {
+      const result = await securityApi.getSessions(accessToken);
+      if (result.data?.sessions) {
+        setSessions(result.data.sessions);
+      } else if (result.error) {
+        setError(result.error);
+      }
+    } catch (err) {
+      setError('Failed to load active sessions');
+    } finally {
+      setSessionsLoading(false);
+    }
+  };
+
+  const handleRevokeSession = async (sessionId: string) => {
+    if (!accessToken) return;
+    setSessionActionId(sessionId);
+    setError('');
+
+    try {
+      const result = await securityApi.revokeSession(accessToken, sessionId);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        await fetchSessions();
+      }
+    } catch (err) {
+      setError('Failed to revoke session');
+    } finally {
+      setSessionActionId(null);
+    }
+  };
+
+  const handleRevokeAllSessions = async () => {
+    if (!accessToken) return;
+    if (!confirm('This will sign out all other active sessions. Continue?')) return;
+
+    setSessionActionId('all');
+    setError('');
+
+    try {
+      const result = await securityApi.revokeAllSessions(accessToken);
+      if (result.error) {
+        setError(result.error);
+      } else {
+        await fetchSessions();
+      }
+    } catch (err) {
+      setError('Failed to revoke sessions');
+    } finally {
+      setSessionActionId(null);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accessToken) return;
+    setPasswordMessage({ type: '', text: '' });
+
+    if (passwords.new !== passwords.confirm) {
+      setPasswordMessage({ type: 'error', text: 'New passwords do not match' });
+      return;
+    }
+
+    if (passwords.current === passwords.new) {
+      setPasswordMessage({
+        type: 'error',
+        text: 'New password must be different from your current password',
+      });
+      return;
+    }
+
+    if (!newPasswordIsStrong) {
+      setPasswordMessage({
+        type: 'error',
+        text: 'Password must include uppercase, lowercase, number, and symbol.',
+      });
+      return;
+    }
+
+    setIsChangingPassword(true);
+
+    try {
+      const result = await userApi.changePassword(accessToken, passwords.current, passwords.new);
+
+      if (result.error) {
+        setPasswordMessage({ type: 'error', text: result.error });
+      } else {
+        setPasswordMessage({ type: 'success', text: 'Password changed successfully' });
+        setPasswords({ current: '', new: '', confirm: '' });
+        setVisiblePasswordFields({ current: false, new: false, confirm: false });
+        await fetchSessions();
+      }
+    } catch (err) {
+      setPasswordMessage({ type: 'error', text: 'Failed to change password' });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
+  const togglePasswordVisibility = (field: keyof typeof visiblePasswordFields) => {
+    setVisiblePasswordFields((current) => ({
+      ...current,
+      [field]: !current[field],
+    }));
   };
 
   const copyToClipboard = (text: string) => {
@@ -435,11 +583,207 @@ export default function SecurityPage() {
               <Key className="w-5 h-5 text-foreground-muted" />
               <span>Password</span>
             </div>
-            <a href="/dashboard/settings" className="text-primary text-sm hover:underline">
-              Change
-            </a>
+            <span className="text-sm text-foreground-muted">Managed below</span>
           </div>
         </div>
+      </div>
+
+      {/* Change Password */}
+      <div className="card">
+        <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
+          <Key className="w-5 h-5 flex-shrink-0" />
+          Change Password
+        </h2>
+
+        <form onSubmit={handleChangePassword} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium mb-2">Current Password</label>
+            <div className="relative">
+              <input
+                type={visiblePasswordFields.current ? 'text' : 'password'}
+                value={passwords.current}
+                onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+                className="input pr-12 text-sm"
+                placeholder="Enter current password"
+                autoComplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => togglePasswordVisibility('current')}
+                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-foreground-subtle transition hover:bg-background-elevated hover:text-foreground"
+                aria-label={visiblePasswordFields.current ? 'Hide current password' : 'Show current password'}
+              >
+                {visiblePasswordFields.current ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">New Password</label>
+            <div className="relative">
+              <input
+                type={visiblePasswordFields.new ? 'text' : 'password'}
+                value={passwords.new}
+                onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+                className="input pr-12 text-sm"
+                placeholder="Create a strong password"
+                autoComplete="new-password"
+                required
+                minLength={8}
+              />
+              <button
+                type="button"
+                onClick={() => togglePasswordVisibility('new')}
+                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-foreground-subtle transition hover:bg-background-elevated hover:text-foreground"
+                aria-label={visiblePasswordFields.new ? 'Hide new password' : 'Show new password'}
+              >
+                {visiblePasswordFields.new ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+            {passwords.new && (
+              <div className="mt-3 grid gap-2 rounded-lg border border-border bg-background/60 p-3 text-xs text-foreground-muted sm:grid-cols-2">
+                {passwordChecks.map((check) => (
+                  <div
+                    key={check.label}
+                    className={`flex items-center gap-2 ${
+                      check.passed ? 'text-accent-green' : 'text-foreground-muted'
+                    }`}
+                  >
+                    <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                    <span>{check.label}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium mb-2">Confirm New Password</label>
+            <div className="relative">
+              <input
+                type={visiblePasswordFields.confirm ? 'text' : 'password'}
+                value={passwords.confirm}
+                onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                className="input pr-12 text-sm"
+                placeholder="Repeat new password"
+                autoComplete="new-password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => togglePasswordVisibility('confirm')}
+                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-foreground-subtle transition hover:bg-background-elevated hover:text-foreground"
+                aria-label={visiblePasswordFields.confirm ? 'Hide confirm password' : 'Show confirm password'}
+              >
+                {visiblePasswordFields.confirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              </button>
+            </div>
+            {passwords.confirm && !newPasswordsMatch && (
+              <p className="mt-2 text-xs text-accent-red">New passwords do not match yet.</p>
+            )}
+          </div>
+
+          {passwordMessage.text && (
+            <div
+              className={`rounded-lg border px-3 py-2 text-sm ${
+                passwordMessage.type === 'success'
+                  ? 'border-accent-green/20 bg-accent-green/10 text-accent-green'
+                  : 'border-accent-red/20 bg-accent-red/10 text-accent-red'
+              }`}
+            >
+              {passwordMessage.text}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={isChangingPassword}
+            className="btn-primary flex items-center gap-2 text-sm"
+          >
+            {isChangingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            Change Password
+          </button>
+        </form>
+      </div>
+
+      {/* Active Sessions */}
+      <div className="card">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <h2 className="text-lg font-semibold flex items-center gap-2">
+            <LogOut className="w-5 h-5 flex-shrink-0" />
+            Active Sessions
+          </h2>
+          {sessions.some((session) => !session.isCurrent) && (
+            <button
+              onClick={handleRevokeAllSessions}
+              disabled={sessionActionId === 'all'}
+              className="text-accent-red text-sm hover:underline disabled:opacity-50"
+            >
+              {sessionActionId === 'all' ? 'Revoking...' : 'Revoke all other sessions'}
+            </button>
+          )}
+        </div>
+
+        {sessionsLoading ? (
+          <div className="flex items-center gap-2 text-sm text-foreground-muted">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading sessions...
+          </div>
+        ) : sessions.length === 0 ? (
+          <p className="text-sm text-foreground-muted">No active sessions found.</p>
+        ) : (
+          <div className="space-y-3">
+            {sessions.map((session) => (
+              <div
+                key={session.id}
+                className="flex flex-col gap-3 rounded-xl bg-background-elevated p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="mt-0.5 rounded-lg bg-background p-2 text-foreground-muted">
+                    <Monitor className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-medium text-sm">
+                        {session.userAgent?.includes('Mobile') ? 'Mobile Device' : 'Desktop'}
+                      </p>
+                      {session.isCurrent && (
+                        <span className="rounded bg-accent-green/10 px-2 py-0.5 text-xs text-accent-green">
+                          Current
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 truncate text-xs text-foreground-muted">
+                      {session.ipAddress || 'Unknown IP'} • {new Date(session.createdAt).toLocaleString()}
+                    </p>
+                    {session.userAgent && (
+                      <p className="mt-1 truncate text-xs text-foreground-subtle">
+                        {session.userAgent}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {!session.isCurrent && (
+                  <button
+                    type="button"
+                    onClick={() => handleRevokeSession(session.id)}
+                    disabled={sessionActionId === session.id}
+                    className="inline-flex items-center justify-center gap-2 rounded-lg border border-accent-red/30 px-3 py-2 text-sm text-accent-red transition hover:bg-accent-red/10 disabled:opacity-50"
+                  >
+                    {sessionActionId === session.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-4 w-4" />
+                    )}
+                    Revoke
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

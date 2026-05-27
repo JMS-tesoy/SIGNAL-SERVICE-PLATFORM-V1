@@ -4,7 +4,7 @@
 
 import { Router, Request, Response } from 'express';
 import { z } from 'zod';
-import prisma from '../config/database.js';
+import { securityRepository } from '../database/repositories/index.js';
 import {
   sendEmailOTP,
   verifyOTP,
@@ -51,9 +51,7 @@ const enableTOTPSchema = z.object({
 
 // Send/Resend email verification code
 router.post('/email/send-verification', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-  });
+  const user = await securityRepository.findEmailVerificationUserById(req.user!.id);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -79,9 +77,7 @@ router.post('/email/send-verification', authenticate, asyncHandler(async (req: R
 router.post('/email/verify', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const data = verifyEmailSchema.parse(req.body);
 
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-  });
+  const user = await securityRepository.findEmailVerificationUserById(req.user!.id);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -98,10 +94,7 @@ router.post('/email/verify', authenticate, asyncHandler(async (req: Request, res
   }
 
   // Update user status from PENDING_VERIFICATION to ACTIVE
-  await prisma.user.update({
-    where: { id: user.id },
-    data: { status: 'ACTIVE' },
-  });
+  await securityRepository.activateVerifiedUser(user.id);
 
   // Send notification
   await notifyEmailVerified(user.id, user.email, user.name || 'Trader');
@@ -118,13 +111,7 @@ router.post('/email/verify', authenticate, asyncHandler(async (req: Request, res
 
 // Check email verification status
 router.get('/email/status', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-    select: {
-      emailVerified: true,
-      emailVerifiedAt: true,
-    },
-  });
+  const user = await securityRepository.findEmailVerificationStatusByUserId(req.user!.id);
 
   res.json({
     verified: user?.emailVerified || false,
@@ -138,13 +125,7 @@ router.get('/email/status', authenticate, asyncHandler(async (req: Request, res:
 
 // Get 2FA status
 router.get('/2fa/status', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-    select: {
-      twoFactorEnabled: true,
-      twoFactorMethod: true,
-    },
-  });
+  const user = await securityRepository.findTwoFactorStatusByUserId(req.user!.id);
 
   res.json({
     enabled: user?.twoFactorEnabled || false,
@@ -154,9 +135,7 @@ router.get('/2fa/status', authenticate, asyncHandler(async (req: Request, res: R
 
 // Setup TOTP (Authenticator App)
 router.post('/2fa/setup-totp', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-  });
+  const user = await securityRepository.findTotpSetupUserById(req.user!.id);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -180,9 +159,7 @@ router.post('/2fa/setup-totp', authenticate, asyncHandler(async (req: Request, r
 router.post('/2fa/enable-totp', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const data = enableTOTPSchema.parse(req.body);
 
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-  });
+  const user = await securityRepository.findTotpEnableUserById(req.user!.id);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -213,9 +190,7 @@ router.post('/2fa/enable-totp', authenticate, asyncHandler(async (req: Request, 
 
 // Setup Email 2FA
 router.post('/2fa/enable-email', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-  });
+  const user = await securityRepository.findEmailTwoFactorUserById(req.user!.id);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -229,13 +204,7 @@ router.post('/2fa/enable-email', authenticate, asyncHandler(async (req: Request,
     return res.status(400).json({ error: 'Two-factor authentication is already enabled' });
   }
 
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      twoFactorEnabled: true,
-      twoFactorMethod: 'EMAIL',
-    },
-  });
+  await securityRepository.enableEmailTwoFactor(user.id);
 
   // Send notification
   await notifyTwoFactorEnabled(user.id, user.email, user.name || 'Trader');
@@ -253,9 +222,7 @@ router.post('/2fa/disable', authenticate, asyncHandler(async (req: Request, res:
     return res.status(400).json({ error: 'Password is required to disable 2FA' });
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-  });
+  const user = await securityRepository.findTwoFactorDisableUserById(req.user!.id);
 
   if (!user) {
     return res.status(404).json({ error: 'User not found' });
@@ -297,25 +264,7 @@ router.post('/2fa/disable', authenticate, asyncHandler(async (req: Request, res:
 
 // Get all active sessions
 router.get('/sessions', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  const sessions = await prisma.session.findMany({
-    where: {
-      userId: req.user!.id,
-      expiresAt: {
-        gt: new Date(),
-      },
-    },
-    orderBy: {
-      createdAt: 'desc',
-    },
-    select: {
-      id: true,
-      token: true,
-      userAgent: true,
-      ipAddress: true,
-      createdAt: true,
-      expiresAt: true,
-    },
-  });
+  const sessions = await securityRepository.findActiveSessionsByUserId(req.user!.id);
 
   // Determine current session
   const currentToken = req.headers.authorization?.split(' ')[1];
@@ -336,17 +285,13 @@ router.get('/sessions', authenticate, asyncHandler(async (req: Request, res: Res
 router.delete('/sessions/:sessionId', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const { sessionId } = req.params;
 
-  const session = await prisma.session.findUnique({
-    where: { id: sessionId },
-  });
+  const session = await securityRepository.findSessionById(sessionId);
 
   if (!session || session.userId !== req.user!.id) {
     return res.status(404).json({ error: 'Session not found' });
   }
 
-  await prisma.session.delete({
-    where: { id: sessionId },
-  });
+  await securityRepository.deleteSessionById(sessionId);
 
   res.json({ message: 'Session revoked successfully' });
 }));
@@ -355,18 +300,9 @@ router.delete('/sessions/:sessionId', authenticate, asyncHandler(async (req: Req
 router.post('/sessions/revoke-all', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const currentToken = req.headers.authorization?.split(' ')[1];
 
-  const result = await prisma.session.deleteMany({
-    where: {
-      userId: req.user!.id,
-      token: {
-        not: currentToken,
-      },
-    },
-  });
+  const result = await securityRepository.deleteOtherSessionsByUserId(req.user!.id, currentToken);
 
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-  });
+  const user = await securityRepository.findNotificationUserById(req.user!.id);
 
   if (user && result.count > 0) {
     await notifySessionsRevoked(
@@ -389,27 +325,8 @@ router.post('/sessions/revoke-all', authenticate, asyncHandler(async (req: Reque
 
 // Get recent security activity
 router.get('/activity', authenticate, asyncHandler(async (req: Request, res: Response) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.id },
-    select: {
-      lastLoginAt: true,
-      lastLoginIp: true,
-      emailVerifiedAt: true,
-      twoFactorEnabled: true,
-      updatedAt: true,
-    },
-  });
-
-  const recentSessions = await prisma.session.findMany({
-    where: { userId: req.user!.id },
-    orderBy: { createdAt: 'desc' },
-    take: 5,
-    select: {
-      createdAt: true,
-      ipAddress: true,
-      userAgent: true,
-    },
-  });
+  const user = await securityRepository.findSecurityActivityUserById(req.user!.id);
+  const recentSessions = await securityRepository.findRecentSessionsByUserId(req.user!.id);
 
   res.json({
     lastLogin: {

@@ -6,13 +6,9 @@ import {
   User,
   Mail,
   Phone,
-  Key,
   Loader2,
   CheckCircle,
   AlertCircle,
-  Eye,
-  EyeOff,
-  LogOut,
   Camera,
   X,
 } from 'lucide-react';
@@ -20,44 +16,20 @@ import { useAuthStore } from '@/lib/store';
 import { userApi } from '@/lib/api';
 
 export default function SettingsPage() {
-  const { accessToken, user, setUser, logout } = useAuthStore();
+  const { accessToken, user, setUser } = useAuthStore();
   const [profile, setProfile] = useState({
     name: '',
     email: '',
     phone: '',
     avatar: '',
   });
-  const [passwords, setPasswords] = useState({
-    current: '',
-    new: '',
-    confirm: '',
-  });
-  const [visiblePasswordFields, setVisiblePasswordFields] = useState({
-    current: false,
-    new: false,
-    confirm: false,
-  });
-  const [sessions, setSessions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
-  const [passwordMessage, setPasswordMessage] = useState({ type: '', text: '' });
-
-  const passwordChecks = [
-    { label: 'At least 8 characters', passed: passwords.new.length >= 8 },
-    { label: 'One uppercase letter', passed: /[A-Z]/.test(passwords.new) },
-    { label: 'One lowercase letter', passed: /[a-z]/.test(passwords.new) },
-    { label: 'One number', passed: /[0-9]/.test(passwords.new) },
-    { label: 'One symbol', passed: /[^A-Za-z0-9]/.test(passwords.new) },
-  ];
-  const newPasswordIsStrong = passwordChecks.every((check) => check.passed);
-  const newPasswordsMatch = Boolean(passwords.confirm) && passwords.new === passwords.confirm;
 
   useEffect(() => {
     fetchProfile();
-    fetchSessions();
   }, [accessToken]);
 
   const fetchProfile = async () => {
@@ -174,19 +146,6 @@ export default function SettingsPage() {
     }
   };
 
-  const fetchSessions = async () => {
-    if (!accessToken) return;
-
-    try {
-      const result = await userApi.getSessions(accessToken);
-      if (result.data?.sessions) {
-        setSessions(result.data.sessions);
-      }
-    } catch (err) {
-      console.error('Failed to fetch sessions:', err);
-    }
-  };
-
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!accessToken) return;
@@ -216,72 +175,6 @@ export default function SettingsPage() {
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleChangePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!accessToken) return;
-    setPasswordMessage({ type: '', text: '' });
-
-    if (passwords.new !== passwords.confirm) {
-      setPasswordMessage({ type: 'error', text: 'New passwords do not match' });
-      return;
-    }
-
-    if (passwords.current === passwords.new) {
-      setPasswordMessage({
-        type: 'error',
-        text: 'New password must be different from your current password',
-      });
-      return;
-    }
-
-    if (!newPasswordIsStrong) {
-      setPasswordMessage({
-        type: 'error',
-        text: 'Password must include uppercase, lowercase, number, and symbol.',
-      });
-      return;
-    }
-
-    setIsChangingPassword(true);
-    setMessage({ type: '', text: '' });
-
-    try {
-      const result = await userApi.changePassword(accessToken, passwords.current, passwords.new);
-
-      if (result.error) {
-        setPasswordMessage({ type: 'error', text: result.error });
-      } else {
-        setPasswordMessage({ type: 'success', text: 'Password changed successfully' });
-        setPasswords({ current: '', new: '', confirm: '' });
-        setVisiblePasswordFields({ current: false, new: false, confirm: false });
-      }
-    } catch (err) {
-      setPasswordMessage({ type: 'error', text: 'Failed to change password' });
-    } finally {
-      setIsChangingPassword(false);
-    }
-  };
-
-  const handleRevokeAllSessions = async () => {
-    if (!accessToken) return;
-    if (!confirm('This will log you out of all other devices. Continue?')) return;
-
-    try {
-      await userApi.revokeAllSessions(accessToken);
-      fetchSessions();
-      setMessage({ type: 'success', text: 'All other sessions have been revoked' });
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to revoke sessions' });
-    }
-  };
-
-  const togglePasswordVisibility = (field: keyof typeof visiblePasswordFields) => {
-    setVisiblePasswordFields((current) => ({
-      ...current,
-      [field]: !current[field],
-    }));
   };
 
   if (isLoading) {
@@ -433,166 +326,6 @@ export default function SettingsPage() {
             Save Changes
           </button>
         </form>
-      </div>
-
-      {/* Change Password */}
-      <div className="card">
-        <h2 className="text-base sm:text-lg font-semibold mb-6 flex items-center gap-2">
-          <Key className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-          <span className="truncate">Change Password</span>
-        </h2>
-
-        <form onSubmit={handleChangePassword} className="space-y-4">
-          <div>
-            <label className="block text-xs sm:text-sm font-medium mb-2">Current Password</label>
-            <div className="relative">
-              <input
-                type={visiblePasswordFields.current ? 'text' : 'password'}
-                value={passwords.current}
-                onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-                className="input pr-12 text-sm"
-                placeholder="Enter current password"
-                autoComplete="current-password"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => togglePasswordVisibility('current')}
-                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-foreground-subtle transition hover:bg-background-elevated hover:text-foreground"
-                aria-label={visiblePasswordFields.current ? 'Hide current password' : 'Show current password'}
-              >
-                {visiblePasswordFields.current ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs sm:text-sm font-medium mb-2">New Password</label>
-            <div className="relative">
-              <input
-                type={visiblePasswordFields.new ? 'text' : 'password'}
-                value={passwords.new}
-                onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
-                className="input pr-12 text-sm"
-                placeholder="Create a strong password"
-                autoComplete="new-password"
-                required
-                minLength={8}
-              />
-              <button
-                type="button"
-                onClick={() => togglePasswordVisibility('new')}
-                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-foreground-subtle transition hover:bg-background-elevated hover:text-foreground"
-                aria-label={visiblePasswordFields.new ? 'Hide new password' : 'Show new password'}
-              >
-                {visiblePasswordFields.new ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            </div>
-            {passwords.new && (
-              <div className="mt-3 grid gap-2 rounded-lg border border-border bg-background/60 p-3 text-xs text-foreground-muted sm:grid-cols-2">
-                {passwordChecks.map((check) => (
-                  <div
-                    key={check.label}
-                    className={`flex items-center gap-2 ${
-                      check.passed ? 'text-accent-green' : 'text-foreground-muted'
-                    }`}
-                  >
-                    <CheckCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                    <span>{check.label}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-xs sm:text-sm font-medium mb-2">Confirm New Password</label>
-            <div className="relative">
-              <input
-                type={visiblePasswordFields.confirm ? 'text' : 'password'}
-                value={passwords.confirm}
-                onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-                className="input pr-12 text-sm"
-                placeholder="Repeat new password"
-                autoComplete="new-password"
-                required
-              />
-              <button
-                type="button"
-                onClick={() => togglePasswordVisibility('confirm')}
-                className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-lg text-foreground-subtle transition hover:bg-background-elevated hover:text-foreground"
-                aria-label={visiblePasswordFields.confirm ? 'Hide confirm password' : 'Show confirm password'}
-              >
-                {visiblePasswordFields.confirm ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-              </button>
-            </div>
-            {passwords.confirm && !newPasswordsMatch && (
-              <p className="mt-2 text-xs text-accent-red">New passwords do not match yet.</p>
-            )}
-          </div>
-
-          {passwordMessage.text && (
-            <div
-              className={`rounded-lg border px-3 py-2 text-sm ${
-                passwordMessage.type === 'success'
-                  ? 'border-accent-green/20 bg-accent-green/10 text-accent-green'
-                  : 'border-accent-red/20 bg-accent-red/10 text-accent-red'
-              }`}
-            >
-              {passwordMessage.text}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={isChangingPassword}
-            className="btn-primary flex items-center gap-2 text-sm sm:text-base"
-          >
-            {isChangingPassword ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            Change Password
-          </button>
-        </form>
-      </div>
-
-      {/* Active Sessions */}
-      <div className="card">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-0 mb-6">
-          <h2 className="text-base sm:text-lg font-semibold flex items-center gap-2">
-            <LogOut className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-            <span className="truncate">Active Sessions</span>
-          </h2>
-          {sessions.length > 1 && (
-            <button
-              onClick={handleRevokeAllSessions}
-              className="text-accent-red text-xs sm:text-sm hover:underline whitespace-nowrap"
-            >
-              Revoke All Other Sessions
-            </button>
-          )}
-        </div>
-
-        <div className="space-y-3">
-          {sessions.map((session, i) => (
-            <div
-              key={session.id}
-              className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-3 sm:p-4 bg-background-elevated rounded-xl gap-2"
-            >
-              <div className="min-w-0">
-                <p className="font-medium text-sm sm:text-base truncate">
-                  {session.userAgent?.includes('Mobile') ? 'Mobile Device' : 'Desktop'}
-                  {i === 0 && (
-                    <span className="ml-2 px-2 py-0.5 bg-accent-green/10 text-accent-green text-xs rounded whitespace-nowrap">
-                      Current
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs sm:text-sm text-foreground-muted truncate">
-                  {session.ipAddress} • {new Date(session.createdAt).toLocaleDateString()}
-                </p>
-              </div>
-            </div>
-          ))}
-        </div>
       </div>
 
       {/* Danger Zone */}
