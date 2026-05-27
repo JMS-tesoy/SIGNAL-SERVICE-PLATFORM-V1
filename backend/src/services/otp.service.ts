@@ -5,12 +5,12 @@
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
-import prisma from '../config/database.js';
 import { sendEmail } from './email.service.js';
 import { sendSMS } from './sms.service.js';
 import { OTPType, OTPMethod } from '@prisma/client';
 import { emailSenders } from '../lib/email/senders.js';
 import { otpTemplate, otpText } from '../lib/email/templates/otp.js';
+import { otpRepository } from '../database/repositories/index.js';
 
 // Configure TOTP
 authenticator.options = {
@@ -60,16 +60,7 @@ export async function sendEmailOTP(
 ): Promise<OTPGenerateResult> {
   try {
     // Invalidate any existing OTPs of this type
-    await prisma.oTPToken.updateMany({
-      where: {
-        userId,
-        type,
-        usedAt: null,
-      },
-      data: {
-        usedAt: new Date(),
-      },
-    });
+    await otpRepository.invalidateUnusedOtpTokens(userId, type);
 
     // Generate new OTP
     const code = generateOTPCode();
@@ -77,14 +68,12 @@ export async function sendEmailOTP(
     const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
 
     // Store OTP in database
-    await prisma.oTPToken.create({
-      data: {
-        userId,
-        code,
-        type,
-        method: OTPMethod.EMAIL,
-        expiresAt,
-      },
+    await otpRepository.createOtpToken({
+      userId,
+      code,
+      type,
+      method: OTPMethod.EMAIL,
+      expiresAt,
     });
 
     // Email subjects based on type
@@ -153,16 +142,7 @@ export async function sendSMSOTP(
 ): Promise<OTPGenerateResult> {
   try {
     // Invalidate existing OTPs
-    await prisma.oTPToken.updateMany({
-      where: {
-        userId,
-        type,
-        usedAt: null,
-      },
-      data: {
-        usedAt: new Date(),
-      },
-    });
+    await otpRepository.invalidateUnusedOtpTokens(userId, type);
 
     // Generate new OTP
     const code = generateOTPCode();
@@ -170,14 +150,12 @@ export async function sendSMSOTP(
     const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
 
     // Store OTP
-    await prisma.oTPToken.create({
-      data: {
-        userId,
-        code,
-        type,
-        method: OTPMethod.SMS,
-        expiresAt,
-      },
+    await otpRepository.createOtpToken({
+      userId,
+      code,
+      type,
+      method: OTPMethod.SMS,
+      expiresAt,
     });
 
     // SMS messages based on type
@@ -221,19 +199,7 @@ export async function verifyOTP(
 
   try {
     // Find valid OTP
-    const otpToken = await prisma.oTPToken.findFirst({
-      where: {
-        userId,
-        type,
-        usedAt: null,
-        expiresAt: {
-          gt: new Date(),
-        },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-    });
+    const otpToken = await otpRepository.findLatestValidOtpToken(userId, type);
 
     if (!otpToken) {
       return {
@@ -244,10 +210,7 @@ export async function verifyOTP(
 
     // Check attempts
     if (otpToken.attempts >= maxAttempts) {
-      await prisma.oTPToken.update({
-        where: { id: otpToken.id },
-        data: { usedAt: new Date() },
-      });
+      await otpRepository.markOtpTokenUsed(otpToken.id);
       return {
         success: false,
         message: 'Too many attempts. Please request a new OTP.',
@@ -256,10 +219,10 @@ export async function verifyOTP(
 
     // Verify code
     if (otpToken.code !== code) {
-      await prisma.oTPToken.update({
-        where: { id: otpToken.id },
-        data: { attempts: otpToken.attempts + 1 },
-      });
+      await otpRepository.incrementOtpTokenAttempts(
+        otpToken.id,
+        otpToken.attempts + 1
+      );
       return {
         success: false,
         message: `Invalid code. ${maxAttempts - otpToken.attempts - 1} attempts remaining.`,
@@ -267,20 +230,11 @@ export async function verifyOTP(
     }
 
     // Mark as used
-    await prisma.oTPToken.update({
-      where: { id: otpToken.id },
-      data: { usedAt: new Date() },
-    });
+    await otpRepository.markOtpTokenUsed(otpToken.id);
 
     // If email verification, update user
     if (type === 'EMAIL_VERIFICATION') {
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          emailVerified: true,
-          emailVerifiedAt: new Date(),
-        },
-      });
+      await otpRepository.markUserEmailVerified(userId);
     }
 
     return {
@@ -313,13 +267,7 @@ export async function setupTOTP(userId: string, email: string): Promise<TOTPSetu
   const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
   
   // Store secret (encrypted in production)
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      twoFactorSecret: secret,
-      twoFactorMethod: 'TOTP',
-    },
-  });
+  await otpRepository.updateUserTotpSecret(userId, secret);
 
   return {
     secret,
@@ -334,10 +282,7 @@ export async function setupTOTP(userId: string, email: string): Promise<TOTPSetu
 
 export async function verifyTOTP(userId: string, code: string): Promise<OTPVerifyResult> {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { twoFactorSecret: true },
-    });
+    const user = await otpRepository.findUserTotpSecretById(userId);
 
     if (!user?.twoFactorSecret) {
       return {
@@ -393,12 +338,7 @@ export async function enableTwoFactor(
   );
 
   // Enable 2FA
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      twoFactorEnabled: true,
-    },
-  });
+  await otpRepository.enableUserTwoFactor(userId);
 
   return {
     success: true,
@@ -412,13 +352,7 @@ export async function enableTwoFactor(
 // =============================================================================
 
 export async function disableTwoFactor(userId: string): Promise<{ success: boolean; message: string }> {
-  await prisma.user.update({
-    where: { id: userId },
-    data: {
-      twoFactorEnabled: false,
-      twoFactorSecret: null,
-    },
-  });
+  await otpRepository.disableUserTwoFactor(userId);
 
   return {
     success: true,

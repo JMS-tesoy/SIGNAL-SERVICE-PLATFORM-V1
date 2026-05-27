@@ -147,6 +147,19 @@ export function findUserSessions(userId: string) {
   });
 }
 
+export function findNotificationRecipientsByIds(userIds: string[]) {
+  return prisma.user.findMany({
+    where: {
+      id: { in: userIds },
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+    },
+  });
+}
+
 export function deleteUserSession(sessionId: string, userId: string) {
   return prisma.session.deleteMany({
     where: { id: sessionId, userId },

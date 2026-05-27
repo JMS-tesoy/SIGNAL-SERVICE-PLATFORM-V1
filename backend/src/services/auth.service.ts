@@ -5,11 +5,11 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import prisma from '../config/database.js';
 import { sendEmailOTP, sendSMSOTP, verifyOTP, verifyTOTP } from './otp.service.js';
 import { sendEmail, emailTemplates } from './email.service.js';
 import { notifyNewLogin, notifyPasswordChanged } from './notification.service.js';
 import { User, OTPType, TwoFactorMethod } from '@prisma/client';
+import { authRepository } from '../database/repositories/index.js';
 
 // =============================================================================
 // TYPES
@@ -167,9 +167,8 @@ export function verifyToken(token: string): TokenPayload | null {
 export async function register(input: RegisterInput): Promise<AuthResult> {
   try {
     // Check if user exists
-    const existingUser = await prisma.user.findUnique({
-      where: { email: input.email.toLowerCase() },
-    });
+    const email = input.email.toLowerCase();
+    const existingUser = await authRepository.findUserByEmail(email);
 
     if (existingUser) {
       return {
@@ -182,30 +181,18 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
     const hashedPassword = await hashPassword(input.password);
 
     // Create user
-    const user = await prisma.user.create({
-      data: {
-        email: input.email.toLowerCase(),
-        password: hashedPassword,
-        name: input.name,
-        status: 'PENDING_VERIFICATION',
-      },
+    const user = await authRepository.createUser({
+      email,
+      password: hashedPassword,
+      name: input.name,
+      status: 'PENDING_VERIFICATION',
     });
 
     // Create free subscription
-    const freeTier = await prisma.subscriptionTier.findFirst({
-      where: { name: 'free' },
-    });
+    const freeTier = await authRepository.findFreeSubscriptionTier();
 
     if (freeTier) {
-      await prisma.subscription.create({
-        data: {
-          userId: user.id,
-          tierId: freeTier.id,
-          status: 'ACTIVE',
-          currentPeriodStart: new Date(),
-          currentPeriodEnd: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000), // 1 year
-        },
-      });
+      await authRepository.createFreeSubscriptionForUser(user.id, freeTier.id);
     }
 
     // Send verification email OTP (non-blocking - don't fail registration if email fails)
@@ -253,9 +240,7 @@ export async function register(input: RegisterInput): Promise<AuthResult> {
 export async function login(input: LoginInput): Promise<AuthResult> {
   try {
     // Find user
-    const user = await prisma.user.findUnique({
-      where: { email: input.email.toLowerCase() },
-    });
+    const user = await authRepository.findUserByEmail(input.email.toLowerCase());
 
     if (!user) {
       return {
@@ -306,25 +291,17 @@ export async function login(input: LoginInput): Promise<AuthResult> {
     const refreshToken = generateRefreshToken(user, input.rememberMe);
 
     // Create session
-    await prisma.session.create({
-      data: {
-        userId: user.id,
-        token: accessToken,
-        refreshToken,
-        ipAddress: input.ipAddress,
-        userAgent: input.userAgent,
-        expiresAt: new Date(Date.now() + (input.rememberMe ? REMEMBER_ME_SESSION_DURATION_MS : SESSION_DURATION_MS)),
-      },
+    await authRepository.createSession({
+      userId: user.id,
+      token: accessToken,
+      refreshToken,
+      ipAddress: input.ipAddress,
+      userAgent: input.userAgent,
+      expiresAt: new Date(Date.now() + (input.rememberMe ? REMEMBER_ME_SESSION_DURATION_MS : SESSION_DURATION_MS)),
     });
 
     // Update last login
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        lastLoginAt: new Date(),
-        lastLoginIp: input.ipAddress,
-      },
-    });
+    await authRepository.updateUserLastLogin(user.id, input.ipAddress);
 
     // Send login notification (non-blocking)
     notifyNewLogin(user.id, user.email, user.name || 'Trader', {
@@ -377,9 +354,7 @@ export async function verifyTwoFactorAndLogin(
       };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-    });
+    const user = await authRepository.findUserById(payload.userId);
 
     if (!user) {
       return {
@@ -416,25 +391,17 @@ export async function verifyTwoFactorAndLogin(
     const refreshToken = generateRefreshToken(user, rememberMe);
 
     // Create session
-    await prisma.session.create({
-      data: {
-        userId: user.id,
-        token: accessToken,
-        refreshToken,
-        ipAddress,
-        userAgent,
-        expiresAt: new Date(Date.now() + (rememberMe ? REMEMBER_ME_SESSION_DURATION_MS : SESSION_DURATION_MS)),
-      },
+    await authRepository.createSession({
+      userId: user.id,
+      token: accessToken,
+      refreshToken,
+      ipAddress,
+      userAgent,
+      expiresAt: new Date(Date.now() + (rememberMe ? REMEMBER_ME_SESSION_DURATION_MS : SESSION_DURATION_MS)),
     });
 
     // Update last login
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        lastLoginAt: new Date(),
-        lastLoginIp: ipAddress,
-      },
-    });
+    await authRepository.updateUserLastLogin(user.id, ipAddress);
 
     return {
       success: true,
@@ -473,17 +440,7 @@ export async function resendTwoFactorOTP(
       };
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      select: {
-        id: true,
-        email: true,
-        phone: true,
-        twoFactorEnabled: true,
-        twoFactorMethod: true,
-        status: true,
-      },
-    });
+    const user = await authRepository.findTwoFactorLoginUserById(payload.userId);
 
     if (!user) {
       return {
@@ -561,10 +518,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<AuthResu
     }
 
     // Check if session exists
-    const session = await prisma.session.findUnique({
-      where: { refreshToken },
-      include: { user: true },
-    });
+    const session = await authRepository.findSessionByRefreshToken(refreshToken);
 
     if (!session || session.expiresAt < new Date()) {
       return {
@@ -585,10 +539,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<AuthResu
     const accessToken = generateAccessToken(session.user);
 
     // Update session
-    await prisma.session.update({
-      where: { id: session.id },
-      data: { token: accessToken },
-    });
+    await authRepository.updateSessionAccessToken(session.id, accessToken);
 
     return {
       success: true,
@@ -610,9 +561,7 @@ export async function refreshAccessToken(refreshToken: string): Promise<AuthResu
 
 export async function logout(token: string): Promise<{ success: boolean; message: string }> {
   try {
-    await prisma.session.deleteMany({
-      where: { token },
-    });
+    await authRepository.deleteSessionsByAccessToken(token);
 
     return {
       success: true,
@@ -633,9 +582,7 @@ export async function logout(token: string): Promise<{ success: boolean; message
 
 export async function requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
   try {
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
+    const user = await authRepository.findUserByEmail(email.toLowerCase());
 
     // Always return success to prevent email enumeration
     if (!user) {
@@ -666,9 +613,7 @@ export async function resetPassword(
   newPassword: string
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
+    const user = await authRepository.findUserByEmail(email.toLowerCase());
 
     if (!user) {
       return {
@@ -687,15 +632,10 @@ export async function resetPassword(
     const hashedPassword = await hashPassword(newPassword);
 
     // Update password
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { password: hashedPassword },
-    });
+    await authRepository.updateUserPassword(user.id, hashedPassword);
 
     // Invalidate all sessions
-    await prisma.session.deleteMany({
-      where: { userId: user.id },
-    });
+    await authRepository.deleteUserSessions(user.id);
 
     return {
       success: true,
@@ -719,9 +659,7 @@ export async function verifyEmailWithCode(
   code: string
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
+    const user = await authRepository.findUserByEmail(email.toLowerCase());
 
     if (!user) {
       return {
@@ -744,10 +682,7 @@ export async function verifyEmailWithCode(
     }
 
     // Update user status
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { status: 'ACTIVE' },
-    });
+    await authRepository.activateUser(user.id);
 
     return {
       success: true,
@@ -766,9 +701,7 @@ export async function resendVerificationEmail(
   email: string
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const user = await prisma.user.findUnique({
-      where: { email: email.toLowerCase() },
-    });
+    const user = await authRepository.findUserByEmail(email.toLowerCase());
 
     // Always return success to prevent email enumeration
     if (!user) {

@@ -3,8 +3,8 @@
 // =============================================================================
 
 import { sendEmail } from './email.service.js';
-import prisma from '../config/database.js';
 import { getSiteUrl } from '../lib/site-url.js';
+import { userRepository } from '../database/repositories/index.js';
 
 // =============================================================================
 // TYPES
@@ -553,16 +553,7 @@ export async function notifyMultipleUsers(
   templateData: any
 ): Promise<void> {
   try {
-    const users = await prisma.user.findMany({
-      where: {
-        id: { in: userIds },
-      },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-      },
-    });
+    const users = await userRepository.findNotificationRecipientsByIds(userIds);
 
     const promises = users.map(user => {
       // Add batch notification logic based on templateName

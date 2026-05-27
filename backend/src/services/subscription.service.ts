@@ -3,10 +3,10 @@
 // =============================================================================
 
 import Stripe from 'stripe';
-import prisma from '../config/database.js';
 import { sendEmail, emailTemplates } from './email.service.js';
-import { BillingCycle, SubscriptionStatus } from '@prisma/client';
+import { BillingCycle } from '@prisma/client';
 import { getSiteUrl } from '../lib/site-url.js';
+import { subscriptionRepository } from '../database/repositories/index.js';
 
 // =============================================================================
 // STRIPE CLIENT
@@ -39,10 +39,7 @@ interface SubscriptionResult {
 // =============================================================================
 
 export async function getSubscriptionTiers() {
-  return prisma.subscriptionTier.findMany({
-    where: { isActive: true },
-    orderBy: { sortOrder: 'asc' },
-  });
+  return subscriptionRepository.findActiveSubscriptionTiers();
 }
 
 // =============================================================================
@@ -50,12 +47,7 @@ export async function getSubscriptionTiers() {
 // =============================================================================
 
 export async function getUserSubscription(userId: string) {
-  return prisma.subscription.findUnique({
-    where: { userId },
-    include: {
-      tier: true,
-    },
-  });
+  return subscriptionRepository.findSubscriptionWithTierByUserId(userId);
 }
 
 // =============================================================================
@@ -63,10 +55,7 @@ export async function getUserSubscription(userId: string) {
 // =============================================================================
 
 async function getOrCreateStripeCustomer(userId: string): Promise<string> {
-  const user = await prisma.user.findUnique({
-    where: { id: userId },
-    include: { subscription: true },
-  });
+  const user = await subscriptionRepository.findUserWithSubscription(userId);
 
   if (!user) {
     throw new Error('User not found');
@@ -99,17 +88,13 @@ export async function createCheckoutSession(
   billingCycle: BillingCycle
 ): Promise<{ success: boolean; url?: string; message: string }> {
   try {
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-    });
+    const user = await subscriptionRepository.findUserById(userId);
 
     if (!user) {
       return { success: false, message: 'User not found' };
     }
 
-    const tier = await prisma.subscriptionTier.findUnique({
-      where: { id: tierId },
-    });
+    const tier = await subscriptionRepository.findSubscriptionTierById(tierId);
 
     if (!tier) {
       return { success: false, message: 'Subscription tier not found' };
@@ -163,9 +148,7 @@ export async function createSubscription(input: CreateSubscriptionInput): Promis
   try {
     const { userId, tierId, billingCycle, paymentMethodId } = input;
 
-    const tier = await prisma.subscriptionTier.findUnique({
-      where: { id: tierId },
-    });
+    const tier = await subscriptionRepository.findSubscriptionTierById(tierId);
 
     if (!tier) {
       return { success: false, message: 'Subscription tier not found' };
@@ -212,29 +195,14 @@ export async function createSubscription(input: CreateSubscriptionInput): Promis
     const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent;
 
     // Create or update subscription in database
-    const subscription = await prisma.subscription.upsert({
-      where: { userId },
-      create: {
-        userId,
-        tierId,
-        billingCycle,
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: stripeSubscription.id,
-        status: 'ACTIVE',
-        currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-        currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
-      },
-      update: {
-        tierId,
-        billingCycle,
-        stripeSubscriptionId: stripeSubscription.id,
-        status: 'ACTIVE',
-        currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
-        currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
-        cancelAtPeriodEnd: false,
-        canceledAt: null,
-      },
-      include: { tier: true },
+    const subscription = await subscriptionRepository.upsertUserSubscription({
+      userId,
+      tierId,
+      billingCycle,
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: stripeSubscription.id,
+      currentPeriodStart: new Date(stripeSubscription.current_period_start * 1000),
+      currentPeriodEnd: new Date(stripeSubscription.current_period_end * 1000),
     });
 
     return {
@@ -258,9 +226,7 @@ export async function cancelSubscription(
   immediately: boolean = false
 ): Promise<SubscriptionResult> {
   try {
-    const subscription = await prisma.subscription.findUnique({
-      where: { userId },
-    });
+    const subscription = await subscriptionRepository.findSubscriptionByUserId(userId);
 
     if (!subscription) {
       return { success: false, message: 'No active subscription found' };
@@ -279,15 +245,11 @@ export async function cancelSubscription(
     }
 
     // Update database
-    const updatedSubscription = await prisma.subscription.update({
-      where: { userId },
-      data: {
-        status: immediately ? 'CANCELED' : 'ACTIVE',
-        cancelAtPeriodEnd: !immediately,
-        canceledAt: new Date(),
-      },
-      include: { tier: true },
-    });
+    const updatedSubscription =
+      await subscriptionRepository.updateSubscriptionCancellation(
+        userId,
+        immediately
+      );
 
     return {
       success: true,
@@ -308,9 +270,7 @@ export async function cancelSubscription(
 
 export async function resumeSubscription(userId: string): Promise<SubscriptionResult> {
   try {
-    const subscription = await prisma.subscription.findUnique({
-      where: { userId },
-    });
+    const subscription = await subscriptionRepository.findSubscriptionByUserId(userId);
 
     if (!subscription?.stripeSubscriptionId) {
       return { success: false, message: 'No subscription to resume' };
@@ -322,14 +282,8 @@ export async function resumeSubscription(userId: string): Promise<SubscriptionRe
     });
 
     // Update database
-    const updatedSubscription = await prisma.subscription.update({
-      where: { userId },
-      data: {
-        cancelAtPeriodEnd: false,
-        canceledAt: null,
-      },
-      include: { tier: true },
-    });
+    const updatedSubscription =
+      await subscriptionRepository.resumeUserSubscription(userId);
 
     return {
       success: true,
@@ -352,18 +306,14 @@ export async function changeSubscriptionTier(
   billingCycle?: BillingCycle
 ): Promise<SubscriptionResult> {
   try {
-    const subscription = await prisma.subscription.findUnique({
-      where: { userId },
-      include: { tier: true },
-    });
+    const subscription =
+      await subscriptionRepository.findSubscriptionWithTierByUserId(userId);
 
     if (!subscription) {
       return { success: false, message: 'No active subscription found' };
     }
 
-    const newTier = await prisma.subscriptionTier.findUnique({
-      where: { id: newTierId },
-    });
+    const newTier = await subscriptionRepository.findSubscriptionTierById(newTierId);
 
     if (!newTier) {
       return { success: false, message: 'Subscription tier not found' };
@@ -391,17 +341,14 @@ export async function changeSubscriptionTier(
     }
 
     // Update database
-    const updatedSubscription = await prisma.subscription.update({
-      where: { userId },
-      data: {
-        tierId: newTierId,
-        billingCycle: cycle,
-      },
-      include: { tier: true },
+    const updatedSubscription = await subscriptionRepository.updateUserSubscriptionTier({
+      userId,
+      tierId: newTierId,
+      billingCycle: cycle,
     });
 
     // Send confirmation email
-    const user = await prisma.user.findUnique({ where: { id: userId } });
+    const user = await subscriptionRepository.findUserById(userId);
     if (user) {
       const emailData = emailTemplates.subscriptionConfirmed(
         newTier.displayName,
@@ -430,11 +377,7 @@ export async function changeSubscriptionTier(
 // =============================================================================
 
 export async function getPaymentHistory(userId: string, limit: number = 10) {
-  return prisma.payment.findMany({
-    where: { userId },
-    orderBy: { createdAt: 'desc' },
-    take: limit,
-  });
+  return subscriptionRepository.findPaymentHistory(userId, limit);
 }
 
 // =============================================================================
@@ -443,9 +386,7 @@ export async function getPaymentHistory(userId: string, limit: number = 10) {
 
 export async function getBillingPortalUrl(userId: string): Promise<{ success: boolean; url?: string; message: string }> {
   try {
-    const subscription = await prisma.subscription.findUnique({
-      where: { userId },
-    });
+    const subscription = await subscriptionRepository.findSubscriptionByUserId(userId);
 
     if (!subscription?.stripeCustomerId) {
       return { success: false, message: 'No billing information found' };
@@ -475,10 +416,8 @@ export async function checkFeatureAccess(
   userId: string,
   feature: string
 ): Promise<boolean> {
-  const subscription = await prisma.subscription.findUnique({
-    where: { userId },
-    include: { tier: true },
-  });
+  const subscription =
+    await subscriptionRepository.findSubscriptionWithTierByUserId(userId);
 
   if (!subscription || subscription.status !== 'ACTIVE') {
     return false;
@@ -497,10 +436,8 @@ export async function checkSignalLimit(userId: string): Promise<{
   remaining: number;
   limit: number;
 }> {
-  const subscription = await prisma.subscription.findUnique({
-    where: { userId },
-    include: { tier: true },
-  });
+  const subscription =
+    await subscriptionRepository.findSubscriptionWithTierByUserId(userId);
 
   if (!subscription) {
     return { allowed: false, remaining: 0, limit: 0 };
@@ -517,12 +454,10 @@ export async function checkSignalLimit(userId: string): Promise<{
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
-  const count = await prisma.signalExecution.count({
-    where: {
-      userId,
-      receivedAt: { gte: today },
-    },
-  });
+  const count = await subscriptionRepository.countSignalExecutionsSince(
+    userId,
+    today
+  );
 
   const remaining = Math.max(0, limit - count);
 
