@@ -128,10 +128,13 @@ export default function MT5AccountManager() {
         >
           {/* Input: ID */}
           <div className="flex-1 w-full">
-            <label className="block text-gray-400 text-xs mb-1">
+            <label htmlFor="mt5-manager-login-id" className="block text-gray-400 text-xs mb-1">
               MT5 Login ID
             </label>
             <input
+              id="mt5-manager-login-id"
+              name="accountId"
+              aria-label="MT5 Login ID"
               type="text"
               value={newAccountId}
               onChange={(e) => setNewAccountId(e.target.value)}
@@ -143,8 +146,10 @@ export default function MT5AccountManager() {
 
           {/* Input: Type */}
           <div className="w-full md:w-48">
-            <label className="block text-gray-400 text-xs mb-1">Type</label>
+            <label htmlFor="mt5-manager-account-type" className="block text-gray-400 text-xs mb-1">Type</label>
             <select
+              id="mt5-manager-account-type"
+              name="accountType"
               value={newAccountType}
               onChange={(e) => setNewAccountType(e.target.value)}
               className="w-full bg-gray-900 border border-gray-600 text-white rounded p-2 focus:border-blue-500 focus:outline-none"
@@ -209,6 +214,9 @@ export default function MT5AccountManager() {
                 </p>
                 <div className="flex gap-2">
                   <input
+                    id={`mt5-generated-key-${acc.id}`}
+                    name="generatedApiKey"
+                    aria-label="Generated MT5 API key"
                     readOnly
                     value={generatedKey.key}
                     className="flex-1 bg-black/50 border border-yellow-800 text-yellow-200 font-mono text-sm p-2 rounded"

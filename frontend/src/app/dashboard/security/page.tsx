@@ -440,6 +440,9 @@ export default function SecurityPage() {
 
             <div className="flex gap-4">
               <input
+                id="two-factor-verification-code"
+                name="verificationCode"
+                aria-label="Two-factor verification code"
                 type="text"
                 value={verifyCode}
                 onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
@@ -528,6 +531,9 @@ export default function SecurityPage() {
             </p>
 
             <input
+              id="disable-two-factor-password"
+              name="disablePassword"
+              aria-label="Password to disable two-factor authentication"
               type="password"
               value={disablePassword}
               onChange={(e) => setDisablePassword(e.target.value)}
@@ -597,9 +603,12 @@ export default function SecurityPage() {
 
         <form onSubmit={handleChangePassword} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium mb-2">Current Password</label>
+            <label htmlFor="current-password" className="block text-sm font-medium mb-2">Current Password</label>
             <div className="relative">
               <input
+                id="current-password"
+                name="currentPassword"
+                aria-label="Current password"
                 type={visiblePasswordFields.current ? 'text' : 'password'}
                 value={passwords.current}
                 onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
@@ -620,9 +629,12 @@ export default function SecurityPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">New Password</label>
+            <label htmlFor="new-password" className="block text-sm font-medium mb-2">New Password</label>
             <div className="relative">
               <input
+                id="new-password"
+                name="newPassword"
+                aria-label="New password"
                 type={visiblePasswordFields.new ? 'text' : 'password'}
                 value={passwords.new}
                 onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
@@ -659,9 +671,12 @@ export default function SecurityPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-2">Confirm New Password</label>
+            <label htmlFor="confirm-new-password" className="block text-sm font-medium mb-2">Confirm New Password</label>
             <div className="relative">
               <input
+                id="confirm-new-password"
+                name="confirmNewPassword"
+                aria-label="Confirm new password"
                 type={visiblePasswordFields.confirm ? 'text' : 'password'}
                 value={passwords.confirm}
                 onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}

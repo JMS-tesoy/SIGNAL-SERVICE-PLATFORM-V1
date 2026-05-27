@@ -774,12 +774,14 @@ function AccountCard({
               <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="relative flex-1">
                   <input
+                    id={`generated-api-key-${account.id}`}
+                    name="generatedApiKey"
+                    aria-label="Generated MT5 API key"
                     readOnly
                     type={showGeneratedKey ? "text" : "password"}
                     value={keyForThisAccount}
                     className="input h-11 pr-12 font-mono text-sm"
                     onClick={(event) => event.currentTarget.select()}
-                    aria-label="Generated MT5 API key"
                   />
                   <button
                     type="button"
@@ -861,6 +863,8 @@ function AddAccountModal({
               )}
 
               <ValidatedInput
+                id="mt5-account-id"
+                name="accountId"
                 label="Account ID *"
                 value={newAccount.accountId}
                 error={validation.accountId}
@@ -870,8 +874,10 @@ function AddAccountModal({
               />
 
               <div>
-                <label className="block text-sm font-medium mb-2">Account Type *</label>
+                <label htmlFor="mt5-account-type" className="block text-sm font-medium mb-2">Account Type *</label>
                 <select
+                  id="mt5-account-type"
+                  name="accountType"
                   value={newAccount.accountType}
                   onChange={(event) => {
                     if (isFreeAccount && event.target.value === "MASTER") {
@@ -896,6 +902,8 @@ function AddAccountModal({
               </div>
 
               <ValidatedInput
+                id="mt5-broker"
+                name="broker"
                 label="Broker (Optional)"
                 value={newAccount.broker}
                 error={validation.broker}
@@ -904,6 +912,8 @@ function AddAccountModal({
               />
 
               <ValidatedInput
+                id="mt5-server"
+                name="server"
                 label="Server *"
                 value={newAccount.server}
                 error={validation.server}
@@ -928,6 +938,8 @@ function AddAccountModal({
 }
 
 function ValidatedInput({
+  id,
+  name,
   label,
   value,
   error,
@@ -935,6 +947,8 @@ function ValidatedInput({
   inputMode,
   onChange,
 }: {
+  id: string;
+  name: string;
   label: string;
   value: string;
   error: string;
@@ -944,8 +958,11 @@ function ValidatedInput({
 }) {
   return (
     <div>
-      <label className="block text-sm font-medium mb-2">{label}</label>
+      <label htmlFor={id} className="block text-sm font-medium mb-2">{label}</label>
       <input
+        id={id}
+        name={name}
+        aria-label={label.replace(" *", "").replace(" (Optional)", "")}
         type="text"
         value={value}
         onChange={(event) => onChange(event.target.value)}

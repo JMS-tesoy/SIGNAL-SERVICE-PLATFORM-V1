@@ -236,13 +236,16 @@ export default function SettingsPage() {
             </div>
 
             {/* Upload overlay */}
-            <label className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+            <label htmlFor="profile-avatar" className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
               {isUploadingAvatar ? (
                 <Loader2 className="w-6 h-6 text-white animate-spin" />
               ) : (
                 <Camera className="w-6 h-6 text-white" />
               )}
               <input
+                id="profile-avatar"
+                name="avatar"
+                aria-label="Upload profile photo"
                 type="file"
                 accept="image/*"
                 onChange={handleAvatarChange}
@@ -277,25 +280,34 @@ export default function SettingsPage() {
 
         <form onSubmit={handleSaveProfile} className="space-y-4">
           <div>
-            <label className="block text-xs sm:text-sm font-medium mb-2">Name</label>
+            <label htmlFor="profile-name" className="block text-xs sm:text-sm font-medium mb-2">Name</label>
             <input
+              id="profile-name"
+              name="name"
+              aria-label="Name"
               type="text"
               value={profile.name}
               onChange={(e) => setProfile({ ...profile, name: e.target.value })}
               className="input"
               placeholder="Your name"
+              autoComplete="name"
             />
           </div>
 
           <div>
-            <label className="block text-xs sm:text-sm font-medium mb-2">Email</label>
+            <label htmlFor="profile-email" className="block text-xs sm:text-sm font-medium mb-2">Email</label>
             <div className="relative">
               <Mail className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-foreground-subtle" />
               <input
+                id="profile-email"
+                name="email"
+                aria-label="Email"
                 type="email"
                 value={profile.email}
                 className="input pl-10 sm:pl-12 bg-background-elevated cursor-not-allowed text-sm"
                 disabled
+                readOnly
+                autoComplete="email"
               />
             </div>
             <p className="text-[10px] sm:text-xs text-foreground-muted mt-1">
@@ -304,15 +316,19 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="block text-xs sm:text-sm font-medium mb-2">Phone Number</label>
+            <label htmlFor="profile-phone" className="block text-xs sm:text-sm font-medium mb-2">Phone Number</label>
             <div className="relative">
               <Phone className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-foreground-subtle" />
               <input
+                id="profile-phone"
+                name="phone"
+                aria-label="Phone number"
                 type="tel"
                 value={profile.phone}
                 onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
                 className="input pl-10 sm:pl-12 text-sm"
                 placeholder="+1234567890"
+                autoComplete="tel"
               />
             </div>
           </div>
