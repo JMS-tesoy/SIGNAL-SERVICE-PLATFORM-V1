@@ -3,29 +3,68 @@
 // =============================================================================
 
 import { Router, Request, Response } from "express";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
-import { z } from "zod";
 import { authenticate } from "../middleware/auth.middleware.js";
 import { asyncHandler } from "../middleware/error.middleware.js";
 import { hashPassword, comparePassword } from "../services/auth.service.js";
 import { notifyPasswordChanged } from "../services/notification.service.js";
-import { strongPasswordSchema } from "../utils/password-policy.js";
-import { env } from "../config/env.js";
 import {
   generateMt5ApiKey,
   hashMt5ApiKey,
   isHashedMt5ApiKey,
 } from "../utils/api-key.js";
 import {
-  AVATAR_BUCKET_DIR,
   parseAvatarDataUrl,
   removeStoredAvatar,
+  saveParsedAvatarImage,
 } from "../utils/avatar.js";
+import {
+  formatMt5Account,
+  formatMt5ApiKeyUsage,
+  formatPlanUsage,
+} from "../utils/mt5-account-presenter.js";
+import { getMt5AccountEligibilityError } from "../utils/mt5-account-policy.js";
 import { userRepository } from "../database/repositories/index.js";
+import {
+  addMT5AccountSchema,
+  changePasswordSchema,
+  updateProfileSchema,
+  uploadAvatarSchema,
+} from "./schemas/user.schemas.js";
 
 const router = Router();
+
+function getBearerToken(req: Request) {
+  return req.headers.authorization?.split(" ")[1];
+}
+
+async function findUserProfileOrRespond(userId: string, res: Response) {
+  const user = await userRepository.findUserProfileById(userId);
+
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return null;
+  }
+
+  return user;
+}
+
+async function ensureOwnedMt5AccountOrRespond(
+  accountId: string,
+  userId: string,
+  res: Response
+) {
+  const account = await userRepository.findMt5AccountByIdAndUserId(
+    accountId,
+    userId
+  );
+
+  if (!account) {
+    res.status(404).json({ error: "Account not found" });
+    return false;
+  }
+
+  return true;
+}
 
 // =============================================================================
 // GET USER PROFILE
@@ -35,10 +74,10 @@ router.get(
   "/profile",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const user = await userRepository.findUserProfileById(req.user!.id);
+    const user = await findUserProfileOrRespond(req.user!.id, res);
 
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return;
     }
 
     res.json({ user });
@@ -48,11 +87,6 @@ router.get(
 // =============================================================================
 // UPDATE USER PROFILE
 // =============================================================================
-
-const updateProfileSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
-  phone: z.string().max(20).optional(),
-});
 
 router.put(
   "/profile",
@@ -70,19 +104,15 @@ router.put(
 // UPLOAD USER AVATAR
 // =============================================================================
 
-const uploadAvatarSchema = z.object({
-  image: z.string().max(750000),
-});
-
 router.post(
   "/profile/avatar",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const { image } = uploadAvatarSchema.parse(req.body);
-    const existingUser = await userRepository.findUserProfileById(req.user!.id);
+    const existingUser = await findUserProfileOrRespond(req.user!.id, res);
 
     if (!existingUser) {
-      return res.status(404).json({ error: "User not found" });
+      return;
     }
 
     let parsedAvatar: ReturnType<typeof parseAvatarDataUrl>;
@@ -95,12 +125,7 @@ router.post(
       });
     }
 
-    await mkdir(AVATAR_BUCKET_DIR, { recursive: true });
-
-    const fileName = `${req.user!.id}-${randomUUID()}.${parsedAvatar.extension}`;
-    await writeFile(path.join(AVATAR_BUCKET_DIR, fileName), parsedAvatar.buffer);
-
-    const avatar = `${env.API_URL}/uploads/avatars/${fileName}`;
+    const avatar = await saveParsedAvatarImage(req.user!.id, parsedAvatar);
     const user = await userRepository.updateUserProfile(req.user!.id, {
       avatar,
     });
@@ -119,10 +144,10 @@ router.delete(
   "/profile/avatar",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const existingUser = await userRepository.findUserProfileById(req.user!.id);
+    const existingUser = await findUserProfileOrRespond(req.user!.id, res);
 
     if (!existingUser) {
-      return res.status(404).json({ error: "User not found" });
+      return;
     }
 
     const user = await userRepository.updateUserProfile(req.user!.id, {
@@ -138,11 +163,6 @@ router.delete(
 // =============================================================================
 // CHANGE PASSWORD
 // =============================================================================
-
-const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1),
-  newPassword: strongPasswordSchema,
-});
 
 router.put(
   "/password",
@@ -178,7 +198,7 @@ router.put(
     );
 
     // Invalidate all sessions except current
-    const currentToken = req.headers.authorization?.split(" ")[1];
+    const currentToken = getBearerToken(req);
     if (currentToken) {
       await userRepository.deleteOtherUserSessions(req.user!.id, currentToken);
     }
@@ -204,13 +224,6 @@ router.put(
 // ADD MT5 ACCOUNT
 // =============================================================================
 
-const addMT5AccountSchema = z.object({
-  accountId: z.string().min(1).max(50),
-  accountType: z.enum(["MASTER", "SLAVE"]),
-  broker: z.string().optional(),
-  server: z.string().trim().min(1, "Server is required").max(100),
-});
-
 router.post(
   "/mt5-accounts",
   authenticate,
@@ -221,38 +234,19 @@ router.post(
       req.user!.id
     );
 
-    if (data.accountType === "MASTER") {
-      if (!subscription || subscription.status !== "ACTIVE") {
-        return res.status(403).json({
-          error: "An active paid subscription is required to add master accounts.",
-        });
-      }
+    const currentSlaveCount =
+      data.accountType === "SLAVE"
+        ? await userRepository.countSlaveAccountsByUserId(req.user!.id)
+        : 0;
 
-      if (subscription.tier.name === "free") {
-        return res.status(403).json({
-          error: "Master Signal Provider accounts require a paid plan.",
-        });
-      }
-    }
+    const eligibilityError = getMt5AccountEligibilityError({
+      accountType: data.accountType,
+      subscription,
+      currentSlaveCount,
+    });
 
-    // Check subscription limits for slave accounts
-    if (data.accountType === "SLAVE") {
-      // Users without an active subscription cannot add SLAVE accounts
-      if (!subscription || subscription.status !== "ACTIVE") {
-        return res.status(403).json({
-          error: "An active subscription is required to add slave accounts.",
-        });
-      }
-
-      const currentSlaveCount = await userRepository.countSlaveAccountsByUserId(
-        req.user!.id
-      );
-
-      if (currentSlaveCount >= subscription.tier.maxSlaveAccounts) {
-        return res.status(403).json({
-          error: `Your plan allows ${subscription.tier.maxSlaveAccounts} slave account(s). Upgrade to add more.`,
-        });
-      }
+    if (eligibilityError) {
+      return res.status(403).json({ error: eligibilityError });
     }
 
     const account = await userRepository.createMt5Account(req.user!.id, data);
@@ -287,31 +281,14 @@ router.get(
     );
 
     res.json({
-      accounts: accounts.map((a) => ({
-        id: a.id,
-        accountId: a.accountId,
-        accountType: a.accountType,
-        broker: a.broker,
-        server: a.server,
-        isConnected: a.isConnected,
-        lastHeartbeat: a.lastHeartbeat,
-        hasApiKey: Boolean(a.apiKey),
-        balance: a.balance ? Number(a.balance) : null,
-        equity: a.equity ? Number(a.equity) : null,
-        profit: a.profit ? Number(a.profit) : null,
-      })),
-      planUsage: {
-        currentSlaveAccounts: currentSlaveCount,
-        maxSlaveAccounts: subscription?.tier.maxSlaveAccounts ?? 0,
-        subscriptionStatus: subscription?.status ?? null,
-        tierName: subscription?.tier.name ?? null,
-      },
+      accounts: accounts.map(formatMt5Account),
+      planUsage: formatPlanUsage(subscription, currentSlaveCount),
     });
   })
 );
 
 // =============================================================================
-// GENERATE API KEY FOR MT5 ACCOUNT (FIXED)
+// GENERATE API KEY FOR MT5 ACCOUNT
 // =============================================================================
 
 router.post(
@@ -321,13 +298,14 @@ router.post(
     // :accountId here represents the database UUID, matching the frontend call
     const { accountId } = req.params;
 
-    const account = await userRepository.findMt5AccountByIdAndUserId(
+    const hasAccountAccess = await ensureOwnedMt5AccountOrRespond(
       accountId,
-      req.user!.id
+      req.user!.id,
+      res
     );
 
-    if (!account) {
-      return res.status(404).json({ error: "Account not found" });
+    if (!hasAccountAccess) {
+      return;
     }
 
     const apiKey = generateMt5ApiKey();
@@ -341,10 +319,7 @@ router.post(
       apiKey,
       message:
         "API key generated. Store this securely - it cannot be retrieved later.",
-      usage: {
-        header: "X-API-Key",
-        example: `curl -H "X-API-Key: ${apiKey}" https://api.example.com/api/signals`,
-      },
+      usage: formatMt5ApiKeyUsage(apiKey),
     });
   })
 );
@@ -359,13 +334,14 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { accountId } = req.params;
 
-    const account = await userRepository.findMt5AccountByIdAndUserId(
+    const hasAccountAccess = await ensureOwnedMt5AccountOrRespond(
       accountId,
-      req.user!.id
+      req.user!.id,
+      res
     );
 
-    if (!account) {
-      return res.status(404).json({ error: "Account not found" });
+    if (!hasAccountAccess) {
+      return;
     }
 
     await userRepository.updateMt5AccountApiKey(accountId, null);
@@ -384,13 +360,14 @@ router.delete(
   asyncHandler(async (req: Request, res: Response) => {
     const { accountId } = req.params;
 
-    const account = await userRepository.findMt5AccountByIdAndUserId(
+    const hasAccountAccess = await ensureOwnedMt5AccountOrRespond(
       accountId,
-      req.user!.id
+      req.user!.id,
+      res
     );
 
-    if (!account) {
-      return res.status(404).json({ error: "Account not found" });
+    if (!hasAccountAccess) {
+      return;
     }
 
     await userRepository.deleteMt5AccountById(accountId);
@@ -408,8 +385,6 @@ router.get(
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
     const sessions = await userRepository.findUserSessions(req.user!.id);
-
-    const currentToken = req.headers.authorization?.split(" ")[1];
 
     res.json({
       sessions: sessions.map((s) => ({
@@ -444,7 +419,7 @@ router.delete(
   "/sessions",
   authenticate,
   asyncHandler(async (req: Request, res: Response) => {
-    const currentToken = req.headers.authorization?.split(" ")[1];
+    const currentToken = getBearerToken(req);
 
     await userRepository.deleteOtherUserSessions(req.user!.id, currentToken);
 

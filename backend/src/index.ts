@@ -19,7 +19,7 @@ import {
 import { securityConfig, trustProxy } from "./config/security.config.js";
 
 // Routes
-import authRoutes from "./routes/auth.routes.js";
+import authRoutes from "./modules/auth/index.js";
 import securityRoutes from "./routes/security.routes.js";
 import otpRoutes from "./routes/otp.routes.js";
 import userRoutes from "./routes/user.routes.js";

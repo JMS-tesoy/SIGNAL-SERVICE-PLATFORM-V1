@@ -1,5 +1,6 @@
-import { unlink } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { env } from "../config/env.js";
 
 export const AVATAR_BUCKET_DIR = path.resolve(
@@ -67,6 +68,18 @@ export function parseAvatarDataUrl(dataUrl: string) {
   }
 
   return { buffer, extension: getAvatarExtension(mimeType) };
+}
+
+export async function saveParsedAvatarImage(
+  userId: string,
+  avatar: ReturnType<typeof parseAvatarDataUrl>
+) {
+  await mkdir(AVATAR_BUCKET_DIR, { recursive: true });
+
+  const fileName = `${userId}-${randomUUID()}.${avatar.extension}`;
+  await writeFile(path.join(AVATAR_BUCKET_DIR, fileName), avatar.buffer);
+
+  return `${env.API_URL}/uploads/avatars/${fileName}`;
 }
 
 export async function removeStoredAvatar(avatar?: string | null) {

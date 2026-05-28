@@ -69,7 +69,7 @@ function getHealthState(account: MT5Account) {
   if (!account.lastHeartbeat) {
     return {
       key: "NEVER",
-      label: "Never connected",
+      label: "Pending EA connection",
       tone: "text-foreground-muted",
       bg: "bg-foreground-subtle/10",
       icon: XCircle,
@@ -107,7 +107,7 @@ function getHealthState(account: MT5Account) {
 
 function formatHeartbeat(lastHeartbeat: string | null) {
   const age = getHeartbeatAgeMinutes(lastHeartbeat);
-  if (age === null) return "No heartbeat received";
+  if (age === null) return "Awaiting EA heartbeat";
   if (age < 1) return "Just now";
   if (age === 1) return "1 minute ago";
   if (age < 60) return `${age} minutes ago`;
@@ -154,15 +154,15 @@ export default function AccountsPage() {
 
   const accountValidation = {
     accountId: !accountId
-      ? "Account ID is required."
+      ? "MT5 Login ID is required."
       : !/^\d+$/.test(accountId)
-        ? "Account ID should contain numbers only."
+        ? "MT5 Login ID should contain numbers only."
         : accountId.length < 5
-          ? "Account ID should be at least 5 digits."
+          ? "MT5 Login ID should be at least 5 digits."
           : accountId.length > 50
-            ? "Account ID must be 50 digits or fewer."
+            ? "MT5 Login ID must be 50 digits or fewer."
             : duplicateAccount
-              ? "This MT5 account is already connected."
+              ? "This MT5 Login ID is already connected."
               : "",
     server: !server
       ? "Server is required."
@@ -284,7 +284,7 @@ export default function AccountsPage() {
       } else {
         setShowAddModal(false);
         setNewAccount({ accountId: "", accountType: "SLAVE", broker: "", server: "" });
-        setMessage({ type: "success", text: "MT5 account added. Generate an API key to connect your EA." });
+        setMessage({ type: "success", text: "MT5 Login ID added. Generate an API key to verify it from your EA." });
         fetchAccounts();
       }
     } catch {
@@ -423,10 +423,10 @@ export default function AccountsPage() {
               Connection checklist
             </h3>
             <ol className="text-sm text-foreground-muted space-y-1 list-decimal list-inside">
-              <li>Add the exact MT5 account ID and broker server.</li>
+              <li>Add the exact MT5 Login ID and broker server shown in your terminal.</li>
               <li>Generate an API key and copy it into the Sender or Receiver EA.</li>
               <li>Use the backend URL below in the EA WebRequest allowlist.</li>
-              <li>Watch this page for heartbeat and connection status.</li>
+              <li>Verification happens after the matching MT5 terminal sends heartbeat.</li>
             </ol>
           </div>
           <CopyPill label="Backend URL" value={API_BASE_URL} onCopy={copyText} copiedValue={copiedValue} />
@@ -675,7 +675,7 @@ function AccountCard({
             <p className="mt-1 text-sm text-foreground-muted">
               {account.broker || "Unknown broker"} • {account.server || "Unknown server"}
             </p>
-            <p className="mt-1 text-xs text-foreground-subtle">Last heartbeat: {formatHeartbeat(account.lastHeartbeat)}</p>
+            <p className="mt-1 text-xs text-foreground-subtle">EA heartbeat: {formatHeartbeat(account.lastHeartbeat)}</p>
           </div>
         </div>
 
@@ -750,7 +750,7 @@ function AccountCard({
         <div className="rounded-xl border border-accent-yellow/20 bg-accent-yellow/10 px-4 py-3 text-sm text-accent-yellow">
           <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <span>Next step: generate an API key, add this account ID and server to your EA, then start MT5 AutoTrading.</span>
+            <span>Next step: generate an API key, add this MT5 Login ID and server to your EA, then start MT5 AutoTrading to verify the connection.</span>
           </div>
         </div>
       )}
@@ -848,7 +848,12 @@ function AddAccountModal({
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
           <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }} className="bg-background-secondary rounded-xl p-6 w-full max-w-md border border-border" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-semibold">Add MT5 Account</h2>
+              <div>
+                <h2 className="text-xl font-semibold">Add MT5 Account</h2>
+                <p className="mt-1 text-sm text-foreground-muted">
+                  The login ID is verified after your matching MT5 terminal connects through the EA.
+                </p>
+              </div>
               <button onClick={onClose} className="p-2 hover:bg-background-elevated rounded-lg">
                 <X className="w-5 h-5" />
               </button>
@@ -865,11 +870,12 @@ function AddAccountModal({
               <ValidatedInput
                 id="mt5-account-id"
                 name="accountId"
-                label="Account ID *"
+                label="MT5 Login ID *"
                 value={newAccount.accountId}
                 error={validation.accountId}
                 placeholder="e.g., 12345678"
                 inputMode="numeric"
+                helpText="Use the login number shown in your MT5 terminal. Broker verification is confirmed by EA heartbeat."
                 onChange={(value) => onChange({ ...newAccount, accountId: value })}
               />
 
@@ -945,6 +951,7 @@ function ValidatedInput({
   error,
   placeholder,
   inputMode,
+  helpText,
   onChange,
 }: {
   id: string;
@@ -954,6 +961,7 @@ function ValidatedInput({
   error: string;
   placeholder: string;
   inputMode?: "numeric";
+  helpText?: string;
   onChange: (value: string) => void;
 }) {
   return (
@@ -972,6 +980,9 @@ function ValidatedInput({
         autoComplete="off"
         maxLength={100}
       />
+      {helpText && !error && (
+        <p className="mt-2 text-xs leading-5 text-foreground-muted">{helpText}</p>
+      )}
       {error && (
         <p className="mt-2 flex items-start gap-2 text-xs text-accent-red">
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />

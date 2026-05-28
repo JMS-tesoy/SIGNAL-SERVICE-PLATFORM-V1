@@ -18,6 +18,34 @@ interface ApiResponse<T> {
   status: number;
 }
 
+function getApiErrorMessage(data: unknown, status: number) {
+  if (data && typeof data === 'object') {
+    const payload = data as Record<string, unknown>;
+    const details = payload.details;
+
+    if (Array.isArray(details)) {
+      const firstMessage = details.find(
+        (detail): detail is { message: string } =>
+          Boolean(
+            detail &&
+              typeof detail === 'object' &&
+              typeof (detail as Record<string, unknown>).message === 'string'
+          )
+      )?.message;
+
+      if (firstMessage) {
+        return firstMessage;
+      }
+    }
+
+    if (typeof payload.error === 'string') {
+      return payload.error;
+    }
+  }
+
+  return `Request failed with status ${status}`;
+}
+
 // =============================================================================
 // BASE FETCH WRAPPER
 // =============================================================================
@@ -47,7 +75,7 @@ async function apiFetch<T>(
 
     if (!response.ok) {
       return {
-        error: data?.error || `Request failed with status ${response.status}`,
+        error: getApiErrorMessage(data, response.status),
         status: response.status,
       };
     }
