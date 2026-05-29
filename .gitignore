@@ -22,7 +22,8 @@ file-structure*.txt
 folder-structure*.txt
 
 # Local documentation drafts
-docs/
+docs/*
+!docs/DEPLOYMENT.md
 
 # Local EA source versions
 EA's/*.mq5

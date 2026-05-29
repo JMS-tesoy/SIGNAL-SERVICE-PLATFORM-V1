@@ -1,0 +1,1505 @@
+==================== AGENTS.md ====================
+# Repository Guidelines
+
+
+## Orchestration & Source of Truth
+
+`AGENTS.md` is the orchestration file for AI/code-agent work in this repository. It defines how agents must approach tasks, route work to skills, and verify changes. For project direction, architecture decisions, refactor sequencing, and continuation context, agents must also read `docs/PROJECT_SOURCE_OF_TRUTH.md` before starting multi-step work.
+
+Authority order for agent decisions:
+
+1. `AGENTS.md` — orchestration, workflow, skill routing, and non-negotiable operating rules.
+2. `docs/PROJECT_SOURCE_OF_TRUTH.md` — project direction, confirmed architecture, refactor plan, and continuation state.
+3. `.codex/skills/*/SKILL.md` — task-specific execution rules.
+4. Relevant docs in `docs/` — deployment, EA configuration, system architecture, email system, domain configuration, Prisma guide, and other supporting documentation.
+5. Existing source code — final ground truth for current implementation behavior.
+
+If documents conflict, do not guess. Follow the higher-priority document, then report the conflict in the final summary. If `docs/PROJECT_SOURCE_OF_TRUTH.md` is missing, outdated, or unclear, stop before broad refactors and ask for clarification instead of inventing project direction.
+
+Before continuing any interrupted refactor or long-running task, agents must:
+
+1. Read `AGENTS.md`.
+2. Read `docs/PROJECT_SOURCE_OF_TRUTH.md`.
+3. Read all relevant `.codex/skills/*/SKILL.md` files.
+4. Run `git status --short`.
+5. Inspect the current diff before editing.
+6. Identify the exact next unfinished task.
+7. Continue only from that point.
+
+Do not restart the plan, redesign the architecture, overwrite documentation, or touch unrelated files unless the requested task explicitly requires it.
+
+## Project Structure & Module Organization
+
+This repo is a full-stack MT5 trading signal service. `frontend/` contains the Next.js 16 + React 18 dashboard, with app routes under `frontend/src/app`, reusable UI/components under `frontend/src/components`, and API/state helpers under `frontend/src/lib`. `backend/` contains the Express + Prisma API; routes, services, middleware, jobs, and database configuration live under `backend/src`, while the Prisma schema and seed data live in `backend/prisma`. `packages/` holds shared workspace packages, and `EA's/` contains MT5 EA source/build artifacts. Project documentation lives in `docs/`.
+
+## Build, Test, and Development Commands
+
+Use pnpm. From `frontend/`, run `pnpm dev` for the Next.js dev server on port 3000, `pnpm build` for the production build, and `pnpm lint` for Next linting. From `backend/`, run `pnpm dev` for `tsx watch src/index.ts`, `pnpm build` for TypeScript compilation, and `pnpm start` for `dist/index.js`. Prisma commands from `backend/` include `pnpm db:generate`, `pnpm db:push`, `pnpm db:migrate`, and `pnpm db:studio`. The backend also includes `pnpm cron:start` and a script at `backend/scripts/test-signal-flow.ts`; there is no package-level test script currently defined.
+
+## Coding Style & Naming Conventions
+
+Both frontend and backend use TypeScript with `strict: true`. Frontend imports can use the `@/*` alias for `frontend/src/*`. Keep frontend changes aligned with the existing Next.js App Router, Tailwind CSS, Radix/shadcn-style component patterns, Zustand state, and lucide icons. Prefer small component extractions when dashboard pages become large, but avoid broad rewrites unless requested. Backend code uses ES modules, Express route/service boundaries, Prisma for database access, and zod where validation already exists.
+
+## Agent Instructions
+
+Inspect existing files before changing code. Keep edits small, behavior-preserving, and scoped to the request. Use Windows PowerShell-compatible commands in examples. After UI changes, run `pnpm build` from `frontend/` and tell the user what to manually test in the browser. After backend changes, run `pnpm build` from `backend/` and call out any database or environment-variable impact.
+
+
+## Skill Usage Policy
+
+Before making changes, check whether the task matches one or more skills in `.codex/skills`.
+
+Use the relevant skill before editing files.
+
+### Required Skill Routing
+
+Use `$refactor-skill` when the task involves:
+
+- refactoring
+- restructuring
+- modularizing
+- cleaning architecture
+- splitting large files
+- improving scalability
+
+Use `$backend-review-skill` when the task involves:
+
+- backend routes
+- Express services
+- API response shapes
+- middleware
+- authentication checks
+- MT4/MT5 account APIs
+- API key generation or revocation
+
+Use `$frontend-review-skill` when the task involves:
+
+- Next.js pages
+- React components
+- dashboard UI
+- loading states
+- empty states
+- error states
+- role-based frontend rendering
+
+Use `$security-review-skill` when the task involves:
+
+- authentication
+- authorization
+- secrets
+- API keys
+- payments
+- trading accounts
+- broker verification
+- AUM transparency
+- user funds or sensitive financial behavior
+
+Use `$database-prisma-skill` when the task involves:
+
+- Prisma schema
+- database migration
+- seed data
+- indexes
+- constraints
+- relations
+- database safety
+- query performance
+
+Use `$trading-domain-skill` when the task involves:
+
+- MT4/MT5
+- master accounts
+- slave/copier accounts
+- signal providers
+- subscribers
+- copy-trading permissions
+- account heartbeat
+- broker/server/account metadata
+- stale/offline trading accounts
+- AUM visibility or verification
+
+Use `$testing-verification-skill` when the task involves:
+
+- testing
+- build verification
+- linting
+- manual QA
+- regression checks
+- final validation before commit
+
+### Multi-Skill Rule
+
+For complex tasks, use all matching skills.
+
+Example:
+
+A backend change that touches MT5 account API keys and Prisma must use:
+
+- `$backend-review-skill`
+- `$security-review-skill`
+- `$database-prisma-skill`
+- `$trading-domain-skill`
+- `$testing-verification-skill`
+
+### Final Requirement
+
+At the end of every task, state which skills were used or should have been used.
+
+
+## Database Safety
+
+Run Prisma commands from `backend/`. Treat Prisma Studio as direct database access: `pnpm db:studio` can edit or delete real records. Do not connect it to production unless the user explicitly asks for production investigation, and never paste or commit production `DATABASE_URL` values.
+
+## Commit & Pull Request Guidelines
+
+Recent commits use short imperative messages with prefixes such as `fix:`, `feat:`, `refactor:`, and `chore:`. Follow that style, for example `fix: add profile autocomplete attributes`. Mention user-facing behavior, build results, and manual test coverage in PR notes when applicable.
+
+
+
+==================== backend/package.json ====================
+{
+  "name": "signal-service-backend",
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "description": "Trading Signal Service Backend with Auth, OTP, and Subscriptions",
+  "type": "module",
+  "main": "dist/index.js",
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "db:generate": "prisma generate",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:studio": "prisma studio",
+    "cron:start": "tsx src/jobs/scheduler.ts"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.7.0",
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0",
+    "ioredis": "^5.3.2",
+    "jsonwebtoken": "^9.0.2",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.9.7",
+    "otplib": "^12.0.1",
+    "qrcode": "^1.5.3",
+    "resend": "^6.6.0",
+    "stripe": "^14.8.0",
+    "twilio": "^4.19.3",
+    "uuid": "^9.0.1",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20.10.4",
+    "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^6.4.14",
+    "@types/qrcode": "^1.5.5",
+    "@types/uuid": "^9.0.7",
+    "prisma": "^5.7.0",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.3"
+  }
+}
+
+
+
+==================== frontend/package.json ====================
+{
+  "name": "signal-service-frontend",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "next dev -p 3000",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^3.3.2",
+    "@radix-ui/react-avatar": "^1.0.4",
+    "@radix-ui/react-dialog": "^1.0.5",
+    "@radix-ui/react-dropdown-menu": "^2.0.6",
+    "@radix-ui/react-label": "^2.0.2",
+    "@radix-ui/react-select": "^2.0.0",
+    "@radix-ui/react-separator": "^1.0.3",
+    "@radix-ui/react-slot": "^1.0.2",
+    "@radix-ui/react-switch": "^1.0.3",
+    "@radix-ui/react-tabs": "^1.0.4",
+    "@radix-ui/react-toast": "^1.1.5",
+    "@stripe/stripe-js": "^2.2.0",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.0.0",
+    "framer-motion": "^10.16.16",
+    "lucide-react": "^0.299.0",
+    "next": "^16.1.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-hook-form": "^7.49.2",
+    "recharts": "^2.10.3",
+    "tailwind-merge": "^2.2.0",
+    "zod": "^3.22.4",
+    "zustand": "^4.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.4",
+    "@types/react": "^18.2.45",
+    "@types/react-dom": "^18.2.17",
+    "autoprefixer": "^10.4.16",
+    "eslint": "^8.56.0",
+    "eslint-config-next": "14.0.4",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "typescript": "^5.3.3"
+  }
+}
+
+
+
+==================== backend/src/index.ts ====================
+// =============================================================================
+// SIGNAL SERVICE BACKEND - Main Application Entry Point
+// =============================================================================
+
+import "dotenv/config";
+import express, { Request, Response } from "express";
+import path from "node:path";
+import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import { corsConfig } from "./config/cors.config.js";
+import { env } from "./config/env.js";
+import {
+  authRateLimitConfig,
+  generalRateLimitConfig,
+  generalRateLimitedRoutes,
+  signalRateLimitConfig,
+} from "./config/rate-limit.config.js";
+import { securityConfig, trustProxy } from "./config/security.config.js";
+
+// Routes
+import authRoutes from "./modules/auth/index.js";
+import securityRoutes from "./routes/security.routes.js";
+import otpRoutes from "./routes/otp.routes.js";
+import userRoutes from "./routes/user.routes.js";
+import subscriptionRoutes from "./routes/subscription.routes.js";
+import signalRoutes from "./routes/signal.routes.js";
+import webhookRoutes from "./routes/webhook.routes.js";
+import adminRoutes from "./routes/admin.routes.js";
+import downloadRoutes from "./routes/download.routes.js";
+
+// Middleware
+import { requestLogger } from "./middleware/logger.middleware.js";
+import {
+  errorHandler,
+  notFoundHandler,
+} from "./middleware/error.middleware.js";
+import { requestId } from "./core/middleware/index.js";
+
+// Cron Jobs
+import { startCronJobs } from "./jobs/scheduler.js";
+
+const app = express();
+const PORT = env.PORT;
+
+// =============================================================================
+// GLOBAL MIDDLEWARE
+// =============================================================================
+
+// [FIX 1] Unconditional Trust Proxy
+// Required for Railway/Heroku to pass the real IP address correctly.
+// Without this, everyone looks like they have the same IP (the load balancer).
+app.set("trust proxy", trustProxy);
+
+// Request ID
+app.use(requestId);
+
+// Security headers
+app.use(helmet(securityConfig));
+
+app.use(cors(corsConfig));
+
+// =============================================================================
+// RATE LIMITING (THE STRONG FIX)
+// =============================================================================
+
+// 1. General Limiter (For Admin, Users, Subscriptions)
+// Keeps general traffic safe from spam.
+const limiter = rateLimit(generalRateLimitConfig);
+
+// 2. Auth Limiter (LOOSE - For Humans)
+// Allows 100 login attempts per 15 mins. Based on IP.
+// This ensures you (the human) can always log in.
+const authLimiter = rateLimit(authRateLimitConfig);
+
+// 3. Signal Limiter (STRICT + ID BASED - For Bots)
+// [STRONG FIX] This uses the 'Account ID' to track the quota.
+// If the bot spams, it blocks 'MASTER_001', NOT your IP address.
+const signalLimiter = rateLimit(signalRateLimitConfig);
+
+// --- APPLY LIMITERS TO SPECIFIC ROUTES ---
+
+// Apply the Strict Bot Limiter
+app.use("/api/signals", signalLimiter);
+
+// Apply the Loose Human Limiter
+app.use("/api/auth", authLimiter);
+
+// Apply the General Limiter to everything else
+// We list these explicitly so they don't overlap with Signals or Auth
+app.use(generalRateLimitedRoutes, limiter);
+
+// Stripe webhooks need raw body
+app.use("/api/webhooks/stripe", express.raw({ type: "application/json" }));
+
+// JSON body parser
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
+app.use(
+  "/uploads",
+  express.static(path.resolve(process.cwd(), "uploads"), {
+    immutable: true,
+    maxAge: "30d",
+  })
+);
+
+// Request logging
+app.use(requestLogger);
+
+// =============================================================================
+// HEALTH CHECK
+// =============================================================================
+
+app.get("/health", (req: Request, res: Response) => {
+  res.json({
+    status: "healthy",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
+});
+
+// =============================================================================
+// API ROUTES
+// =============================================================================
+
+app.use("/api/auth", authRoutes);
+app.use("/api/security", securityRoutes);
+app.use("/api/otp", otpRoutes);
+
+// --- USER ROUTES ---
+app.use("/api/users", userRoutes);
+app.use("/api/user", userRoutes);
+
+app.use("/api/subscriptions", subscriptionRoutes);
+app.use("/api/signals", signalRoutes);
+app.use("/api/webhooks", webhookRoutes);
+app.use("/api/admin", adminRoutes);
+app.use("/api/downloads", downloadRoutes);
+
+// =============================================================================
+// ERROR HANDLING
+// =============================================================================
+
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+// =============================================================================
+// START SERVER
+// =============================================================================
+
+app.listen(PORT, () => {
+  console.log(`🚀 Signal Service Backend running on http://localhost:${PORT}`);
+
+  if (env.NODE_ENV !== "test") {
+    startCronJobs();
+  }
+});
+
+export default app;
+
+
+
+==================== frontend/src/lib/api.ts ====================
+// =============================================================================
+// API CLIENT - HTTP Request Utilities
+// =============================================================================
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+// =============================================================================
+// TYPES
+// =============================================================================
+
+interface ApiOptions extends RequestInit {
+  token?: string | null;
+}
+
+interface ApiResponse<T> {
+  data?: T;
+  error?: string;
+  status: number;
+}
+
+function getApiErrorMessage(data: unknown, status: number) {
+  if (data && typeof data === 'object') {
+    const payload = data as Record<string, unknown>;
+    const details = payload.details;
+
+    if (Array.isArray(details)) {
+      const firstMessage = details.find(
+        (detail): detail is { message: string } =>
+          Boolean(
+            detail &&
+              typeof detail === 'object' &&
+              typeof (detail as Record<string, unknown>).message === 'string'
+          )
+      )?.message;
+
+      if (firstMessage) {
+        return firstMessage;
+      }
+    }
+
+    if (typeof payload.error === 'string') {
+      return payload.error;
+    }
+  }
+
+  return `Request failed with status ${status}`;
+}
+
+// =============================================================================
+// BASE FETCH WRAPPER
+// =============================================================================
+
+async function apiFetch<T>(
+  endpoint: string,
+  options: ApiOptions = {}
+): Promise<ApiResponse<T>> {
+  const { token, ...fetchOptions } = options;
+
+  const headers: HeadersInit = {
+    'Content-Type': 'application/json',
+    ...(options.headers || {}),
+  };
+
+  if (token) {
+    (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
+  }
+
+  try {
+    const response = await fetch(`${API_URL}${endpoint}`, {
+      ...fetchOptions,
+      headers,
+    });
+
+    const data = await response.json().catch(() => null);
+
+    if (!response.ok) {
+      return {
+        error: getApiErrorMessage(data, response.status),
+        status: response.status,
+      };
+    }
+
+    return {
+      data,
+      status: response.status,
+    };
+  } catch (error) {
+    return {
+      error: 'Network error. Please check your connection.',
+      status: 0,
+    };
+  }
+}
+
+// =============================================================================
+// AUTH API
+// =============================================================================
+
+export const authApi = {
+  register: (email: string, password: string, name?: string) =>
+    apiFetch('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name }),
+    }),
+
+  login: (email: string, password: string) =>
+    apiFetch<{
+      accessToken?: string;
+      refreshToken?: string;
+      user?: any;
+      requiresTwoFactor?: boolean;
+      twoFactorMethod?: string;
+      tempToken?: string;
+    }>('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+
+  verify2FA: (tempToken: string, code: string, method: string) =>
+    apiFetch<{
+      accessToken: string;
+      refreshToken: string;
+      user: any;
+    }>('/api/auth/verify-2fa', {
+      method: 'POST',
+      body: JSON.stringify({ tempToken, code, method }),
+    }),
+
+  resend2FA: (tempToken: string) =>
+    apiFetch<{ message: string; twoFactorMethod?: string }>('/api/auth/resend-2fa', {
+      method: 'POST',
+      body: JSON.stringify({ tempToken }),
+    }),
+
+  refreshToken: (refreshToken: string) =>
+    apiFetch<{ accessToken: string }>('/api/auth/refresh', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken }),
+    }),
+
+  logout: (token: string) =>
+    apiFetch('/api/auth/logout', {
+      method: 'POST',
+      token,
+    }),
+
+  forgotPassword: (email: string) =>
+    apiFetch('/api/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (email: string, code: string, newPassword: string) =>
+    apiFetch('/api/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ email, code, newPassword }),
+    }),
+
+  verifyEmail: (email: string, code: string) =>
+    apiFetch('/api/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ email, code }),
+    }),
+
+  resendVerification: (email: string) =>
+    apiFetch('/api/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  me: (token: string) =>
+    apiFetch<{ user: any }>('/api/auth/me', { token }),
+};
+
+// =============================================================================
+// OTP API
+// =============================================================================
+
+export const otpApi = {
+  sendEmailOTP: (token: string, type: string) =>
+    apiFetch('/api/otp/send/email', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ type }),
+    }),
+
+  sendSMSOTP: (token: string, type: string, phone?: string) =>
+    apiFetch('/api/otp/send/sms', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ type, phone }),
+    }),
+
+  verify: (token: string, code: string, type: string) =>
+    apiFetch('/api/otp/verify', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ code, type }),
+    }),
+
+  setupTOTP: (token: string) =>
+    apiFetch<{ secret: string; qrCode: string; manualEntryKey: string }>(
+      '/api/otp/totp/setup',
+      { method: 'POST', token }
+    ),
+
+  enableTOTP: (token: string, code: string) =>
+    apiFetch<{ backupCodes: string[] }>('/api/otp/totp/enable', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ code }),
+    }),
+
+  disableTOTP: (token: string, password: string) =>
+    apiFetch('/api/otp/totp/disable', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ password }),
+    }),
+
+  getStatus: (token: string) =>
+    apiFetch<{
+      twoFactorEnabled: boolean;
+      twoFactorMethod: string;
+      emailVerified: boolean;
+    }>('/api/otp/status', { token }),
+};
+
+// =============================================================================
+// SUBSCRIPTION API
+// =============================================================================
+
+export const subscriptionApi = {
+  getTiers: () =>
+    apiFetch<{ tiers: any[] }>('/api/subscriptions/tiers'),
+
+  getCurrent: (token: string) =>
+    apiFetch<{ subscription: any }>('/api/subscriptions/current', { token }),
+
+  createCheckout: (token: string, tierId: string, billingCycle: string) =>
+    apiFetch<{ url: string }>('/api/subscriptions/checkout', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ tierId, billingCycle }),
+    }),
+
+  cancel: (token: string, immediately?: boolean) =>
+    apiFetch('/api/subscriptions/cancel', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ immediately }),
+    }),
+
+  resume: (token: string) =>
+    apiFetch('/api/subscriptions/resume', {
+      method: 'POST',
+      token,
+    }),
+
+  changeTier: (token: string, tierId: string, billingCycle?: string) =>
+    apiFetch('/api/subscriptions/change-tier', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ tierId, billingCycle }),
+    }),
+
+  getPayments: (token: string, limit?: number) =>
+    apiFetch<{ payments: any[] }>(
+      `/api/subscriptions/payments${limit ? `?limit=${limit}` : ''}`,
+      { token }
+    ),
+
+  getBillingPortal: (token: string) =>
+    apiFetch<{ url: string }>('/api/subscriptions/billing-portal', { token }),
+
+  getSignalLimit: (token: string) =>
+    apiFetch<{ allowed: boolean; remaining: number; limit: number }>(
+      '/api/subscriptions/signal-limit',
+      { token }
+    ),
+};
+
+// =============================================================================
+// SIGNAL API
+// =============================================================================
+
+export const signalApi = {
+  getHistory: (token: string, params?: { limit?: number; offset?: number; symbol?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.offset) query.set('offset', params.offset.toString());
+    if (params?.symbol) query.set('symbol', params.symbol);
+    
+    return apiFetch<{ signals: any[]; total: number }>(
+      `/api/signals/history?${query.toString()}`,
+      { token }
+    );
+  },
+
+  getStats: (token: string, period?: string) =>
+    apiFetch<any>(
+      `/api/signals/stats${period ? `?period=${period}` : ''}`,
+      { token }
+    ),
+
+  getPerformance: (token: string, period?: '7D' | '30D' | '90D') =>
+    apiFetch<{ data: { date: string; growth: number; drawdown: number }[]; period: string; message?: string }>(
+      `/api/signals/performance${period ? `?period=${period}` : ''}`,
+      { token }
+    ),
+};
+
+// =============================================================================
+// USER API
+// =============================================================================
+
+export interface MT5AccountResponse {
+  id: string;
+  accountId: string;
+  accountType: 'MASTER' | 'SLAVE';
+  broker: string | null;
+  server: string | null;
+  isConnected: boolean;
+  lastHeartbeat: string | null;
+  hasApiKey: boolean;
+  balance: number | null;
+  equity: number | null;
+  profit: number | null;
+}
+
+export interface MT5PlanUsageResponse {
+  currentSlaveAccounts: number;
+  maxSlaveAccounts: number;
+  subscriptionStatus: string | null;
+  tierName: string | null;
+}
+
+export const userApi = {
+  getProfile: (token: string) =>
+    apiFetch<{ user: any }>('/api/users/profile', { token }),
+
+  updateProfile: (token: string, data: { name?: string; phone?: string }) =>
+    apiFetch<{ user: any; message: string }>('/api/users/profile', {
+      method: 'PUT',
+      token,
+      body: JSON.stringify(data),
+    }),
+
+  uploadAvatar: (token: string, image: string) =>
+    apiFetch<{ user: any; avatar: string; message: string }>('/api/users/profile/avatar', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ image }),
+    }),
+
+  removeAvatar: (token: string) =>
+    apiFetch<{ user: any; message: string }>('/api/users/profile/avatar', {
+      method: 'DELETE',
+      token,
+    }),
+
+  changePassword: (token: string, currentPassword: string, newPassword: string) =>
+    apiFetch('/api/users/password', {
+      method: 'PUT',
+      token,
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
+
+  getMT5Accounts: (token: string) =>
+    apiFetch<{ accounts: MT5AccountResponse[]; planUsage: MT5PlanUsageResponse }>(
+      '/api/users/mt5-accounts',
+      { token }
+    ),
+
+  addMT5Account: (token: string, data: {
+    accountId: string;
+    accountType: 'MASTER' | 'SLAVE';
+    broker?: string;
+    server: string;
+  }) =>
+    apiFetch('/api/users/mt5-accounts', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(data),
+    }),
+
+  deleteMT5Account: (token: string, accountId: string) =>
+    apiFetch(`/api/users/mt5-accounts/${accountId}`, {
+      method: 'DELETE',
+      token,
+    }),
+
+  generateMT5ApiKey: (token: string, accountId: string) =>
+    apiFetch<{ apiKey: string; message: string }>(
+      `/api/users/mt5-accounts/${accountId}/api-key`,
+      {
+        method: 'POST',
+        token,
+      }
+    ),
+
+  revokeMT5ApiKey: (token: string, accountId: string) =>
+    apiFetch<{ message: string }>(
+      `/api/users/mt5-accounts/${accountId}/api-key`,
+      {
+        method: 'DELETE',
+        token,
+      }
+    ),
+
+  getSessions: (token: string) =>
+    apiFetch<{ sessions: any[] }>('/api/users/sessions', { token }),
+
+  revokeSession: (token: string, sessionId: string) =>
+    apiFetch(`/api/users/sessions/${sessionId}`, {
+      method: 'DELETE',
+      token,
+    }),
+
+  revokeAllSessions: (token: string) =>
+    apiFetch('/api/users/sessions', {
+      method: 'DELETE',
+      token,
+    }),
+};
+
+// =============================================================================
+// SECURITY API - Email Verification, 2FA, Sessions
+// =============================================================================
+
+export const securityApi = {
+  // Email Verification
+  sendEmailVerification: (token: string) =>
+    apiFetch('/api/security/email/send-verification', {
+      method: 'POST',
+      token,
+    }),
+
+  verifyEmail: (token: string, code: string) =>
+    apiFetch('/api/security/email/verify', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ code }),
+    }),
+
+  getEmailStatus: (token: string) =>
+    apiFetch<{ verified: boolean; verifiedAt: string | null }>(
+      '/api/security/email/status',
+      { token }
+    ),
+
+  // Two-Factor Authentication
+  get2FAStatus: (token: string) =>
+    apiFetch<{ enabled: boolean; method: string | null }>(
+      '/api/security/2fa/status',
+      { token }
+    ),
+
+  setupTOTP: (token: string) =>
+    apiFetch<{ qrCode: string; manualEntryKey: string; secret: string }>(
+      '/api/security/2fa/setup-totp',
+      { method: 'POST', token }
+    ),
+
+  enableTOTP: (token: string, code: string) =>
+    apiFetch<{ message: string; backupCodes: string[] }>(
+      '/api/security/2fa/enable-totp',
+      {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ code }),
+      }
+    ),
+
+  enableEmail2FA: (token: string) =>
+    apiFetch('/api/security/2fa/enable-email', {
+      method: 'POST',
+      token,
+    }),
+
+  disable2FA: (token: string, password: string) =>
+    apiFetch('/api/security/2fa/disable', {
+      method: 'POST',
+      token,
+      body: JSON.stringify({ password }),
+    }),
+
+  // Session Management
+  getSessions: (token: string) =>
+    apiFetch<{ sessions: any[] }>('/api/security/sessions', { token }),
+
+  revokeSession: (token: string, sessionId: string) =>
+    apiFetch(`/api/security/sessions/${sessionId}`, {
+      method: 'DELETE',
+      token,
+    }),
+
+  revokeAllSessions: (token: string) =>
+    apiFetch<{ message: string; revokedCount: number }>(
+      '/api/security/sessions/revoke-all',
+      {
+        method: 'POST',
+        token,
+      }
+    ),
+
+  // Security Activity
+  getActivity: (token: string) =>
+    apiFetch<{
+      lastLogin: { at: string | null; ip: string | null };
+      emailVerified: boolean;
+      twoFactorEnabled: boolean;
+      recentSessions: any[];
+    }>('/api/security/activity', { token }),
+};
+
+// =============================================================================
+// DOWNLOAD API
+// =============================================================================
+
+export interface DownloadFile {
+  id: string;
+  name: string;
+  description: string;
+  filename: string;
+}
+
+export const downloadApi = {
+  getAvailableDownloads: (token: string) =>
+    apiFetch<{ downloads: DownloadFile[] }>('/api/downloads', { token }),
+
+  getDownloadUrl: (fileId: string) => `${API_URL}/api/downloads/${fileId}`,
+};
+
+// =============================================================================
+// ADMIN API - Admin-only endpoints
+// =============================================================================
+
+export interface AdminStats {
+  totalUsers: number;
+  activeUsers: number;
+  totalSubscriptions: number;
+  activeSubscriptions: number;
+  totalSignals: number;
+  todaySignals: number;
+  totalRevenue: number;
+  monthlyRevenue: number;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  name: string | null;
+  role: string;
+  status: string;
+  emailVerified: boolean;
+  twoFactorEnabled: boolean;
+  createdAt: string;
+  subscription?: {
+    tier: { name: string; displayName: string };
+    status: string;
+  };
+  _count?: {
+    signals: number;
+    mt5Accounts: number;
+  };
+}
+
+export interface AdminSignal {
+  id: string;
+  symbol: string;
+  type: string;
+  action: string;
+  volume: number;
+  price: number;
+  status: string;
+  createdAt: string;
+  provider: {
+    id: string;
+    name: string;
+    email: string;
+  };
+  _count?: {
+    executions: number;
+  };
+}
+
+export const adminApi = {
+  // Dashboard Stats
+  getStats: (token: string) =>
+    apiFetch<AdminStats>('/api/admin/stats', { token }),
+
+  // User Management
+  getUsers: (token: string, params?: { page?: number; limit?: number; search?: string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set('page', params.page.toString());
+    if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.search) query.set('search', params.search);
+    if (params?.status) query.set('status', params.status);
+
+    return apiFetch<{ users: AdminUser[]; total: number; page: number; pages: number }>(
+      `/api/admin/users?${query.toString()}`,
+      { token }
+    );
+  },
+
+  getUserDetails: (token: string, userId: string) =>
+    apiFetch<{ user: AdminUser & { signals: any[]; payments: any[] } }>(
+      `/api/admin/users/${userId}`,
+      { token }
+    ),
+
+  updateUserStatus: (token: string, userId: string, status: string) =>
+    apiFetch(`/api/admin/users/${userId}/status`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ status }),
+    }),
+
+  updateUserRole: (token: string, userId: string, role: string) =>
+    apiFetch(`/api/admin/users/${userId}/role`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ role }),
+    }),
+
+  // Signal Management
+  getSignals: (token: string, params?: { page?: number; limit?: number; symbol?: string; status?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.page) query.set('page', params.page.toString());
+    if (params?.limit) query.set('limit', params.limit.toString());
+    if (params?.symbol) query.set('symbol', params.symbol);
+    if (params?.status) query.set('status', params.status);
+
+    return apiFetch<{ signals: AdminSignal[]; total: number; page: number; pages: number }>(
+      `/api/admin/signals?${query.toString()}`,
+      { token }
+    );
+  },
+
+  // Revenue & Analytics
+  getRevenue: (token: string, months?: number) =>
+    apiFetch<{
+      monthlyRevenue: Record<string, number>;
+      total: number;
+      byTier: Record<string, number>;
+    }>(
+      `/api/admin/revenue${months ? `?months=${months}` : ''}`,
+      { token }
+    ),
+
+  // Subscription Tiers Management
+  getTiers: (token: string) =>
+    apiFetch<{ tiers: any[] }>('/api/admin/tiers', { token }),
+
+  createTier: (token: string, data: any) =>
+    apiFetch('/api/admin/tiers', {
+      method: 'POST',
+      token,
+      body: JSON.stringify(data),
+    }),
+
+  updateTier: (token: string, tierId: string, data: any) =>
+    apiFetch(`/api/admin/tiers/${tierId}`, {
+      method: 'PUT',
+      token,
+      body: JSON.stringify(data),
+    }),
+};
+
+export default {
+  auth: authApi,
+  otp: otpApi,
+  subscription: subscriptionApi,
+  signal: signalApi,
+  user: userApi,
+  security: securityApi,
+  download: downloadApi,
+  admin: adminApi,
+};
+
+
+
+==================== backend/src/routes/schemas/user.schemas.ts ====================
+import { z } from "zod";
+import { strongPasswordSchema } from "../../utils/password-policy.js";
+
+export const updateProfileSchema = z.object({
+  name: z.string().trim().min(1, "Name is required").max(100).optional(),
+  phone: z.string().trim().max(20).optional(),
+});
+
+export const uploadAvatarSchema = z.object({
+  image: z.string().trim().min(1, "Avatar image is required").max(750000),
+});
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: strongPasswordSchema,
+  })
+  .refine((data) => data.newPassword !== data.currentPassword, {
+    message: "New password must be different from your current password",
+    path: ["newPassword"],
+  });
+
+export const addMT5AccountSchema = z.object({
+  accountId: z.string().trim().min(1, "Account ID is required").max(50),
+  accountType: z.enum(["MASTER", "SLAVE"]),
+  broker: z.string().trim().max(100).optional(),
+  server: z.string().trim().min(1, "Server is required").max(100),
+});
+
+
+
+==================== frontend/src/components/MT5AccountManager.tsx ====================
+"use client";
+
+import React, { useState, useEffect } from "react";
+
+// --- CONFIGURATION ---
+// This uses the snippet you provided.
+// It checks the specific backend var, then the general API var, then defaults to localhost.
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:3001";
+
+// --- TYPES ---
+interface MT5Account {
+  id: string;
+  accountId: string;
+  accountType: "MASTER" | "SLAVE";
+  apiKey?: string;
+}
+
+export default function MT5AccountManager() {
+  // --- STATE ---
+  const [accounts, setAccounts] = useState<MT5Account[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  // Form State
+  const [newAccountId, setNewAccountId] = useState("");
+  const [newAccountType, setNewAccountType] = useState("SLAVE");
+
+  // Key Display State
+  const [generatedKey, setGeneratedKey] = useState<{
+    id: string;
+    key: string;
+  } | null>(null);
+
+  // --- HELPERS ---
+  const getAuthHeaders = () => {
+    // Tries to get token from localStorage.
+    // If you use cookies, this part might need adjustment, but usually fine for JWT.
+    const token =
+      typeof window !== "undefined" ? localStorage.getItem("token") : "";
+    return {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+  };
+
+  // --- API CALLS ---
+  const fetchAccounts = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/user/mt5-accounts`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) throw new Error("Failed to load accounts");
+      setAccounts(await res.json());
+    } catch (err) {
+      console.error(err);
+      setError("Could not load accounts. Please ensure you are logged in.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAccounts();
+  }, []);
+
+  const handleAddAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/user/mt5-accounts`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          accountId: newAccountId,
+          accountType: newAccountType,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Failed to add account");
+
+      await fetchAccounts();
+      setNewAccountId("");
+    } catch (err) {
+      setError("Error adding account. Ensure ID is unique.");
+    }
+  };
+
+  const generateKey = async (uuid: string) => {
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/user/mt5-accounts/${uuid}/api-key`,
+        {
+          method: "POST",
+          headers: getAuthHeaders(),
+        }
+      );
+
+      if (!res.ok) throw new Error("Failed to generate key");
+
+      const data = await res.json();
+      setGeneratedKey({ id: uuid, key: data.apiKey });
+    } catch (err) {
+      setError("Could not generate API Key.");
+    }
+  };
+
+  // --- RENDER (Dark Mode UI) ---
+  return (
+    <div className="w-full">
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-900/50 border-l-4 border-red-500 text-red-200 p-4 mb-6 rounded">
+          <p>{error}</p>
+        </div>
+      )}
+
+      {/* Add Account Card */}
+      <div className="bg-gray-800 border border-gray-700 p-6 rounded-lg mb-8 shadow-sm">
+        <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4">
+          Add New Connection
+        </h3>
+        <form
+          onSubmit={handleAddAccount}
+          className="flex flex-col md:flex-row gap-4 items-end"
+        >
+          {/* Input: ID */}
+          <div className="flex-1 w-full">
+            <label htmlFor="mt5-manager-login-id" className="block text-gray-400 text-xs mb-1">
+              MT5 Login ID
+            </label>
+            <input
+              id="mt5-manager-login-id"
+              name="accountId"
+              aria-label="MT5 Login ID"
+              type="text"
+              value={newAccountId}
+              onChange={(e) => setNewAccountId(e.target.value)}
+              placeholder="e.g. 88812345"
+              className="w-full bg-gray-900 border border-gray-600 text-white rounded p-2 focus:border-blue-500 focus:outline-none transition-colors"
+              required
+            />
+          </div>
+
+          {/* Input: Type */}
+          <div className="w-full md:w-48">
+            <label htmlFor="mt5-manager-account-type" className="block text-gray-400 text-xs mb-1">Type</label>
+            <select
+              id="mt5-manager-account-type"
+              name="accountType"
+              value={newAccountType}
+              onChange={(e) => setNewAccountType(e.target.value)}
+              className="w-full bg-gray-900 border border-gray-600 text-white rounded p-2 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="SLAVE">Receiver (Slave)</option>
+              <option value="MASTER">Sender (Master)</option>
+            </select>
+          </div>
+
+          {/* Submit Button */}
+          <button
+            type="submit"
+            className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded font-medium transition duration-200"
+          >
+            Add Account
+          </button>
+        </form>
+      </div>
+
+      {/* Account List */}
+      <div className="space-y-4">
+        <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider">
+          Active Connections
+        </h3>
+
+        {loading && <p className="text-gray-500 animate-pulse">Loading...</p>}
+
+        {accounts.map((acc) => (
+          <div
+            key={acc.id}
+            className="bg-gray-800 border border-gray-700 rounded-lg p-4 flex flex-col gap-4"
+          >
+            <div className="flex justify-between items-center">
+              <div className="flex items-center gap-3">
+                <span
+                  className={`px-2 py-0.5 rounded text-xs font-bold ${
+                    acc.accountType === "MASTER"
+                      ? "bg-purple-900 text-purple-200"
+                      : "bg-green-900 text-green-200"
+                  }`}
+                >
+                  {acc.accountType}
+                </span>
+                <span className="text-white font-mono text-lg">
+                  {acc.accountId}
+                </span>
+              </div>
+
+              <button
+                onClick={() => generateKey(acc.id)}
+                className="text-sm text-blue-400 hover:text-blue-300 hover:underline font-medium"
+              >
+                Generate Key
+              </button>
+            </div>
+
+            {/* Secret Key Display Area */}
+            {generatedKey?.id === acc.id && (
+              <div className="bg-yellow-900/30 border border-yellow-700 p-4 rounded animate-in fade-in slide-in-from-top-2">
+                <p className="text-yellow-500 text-xs font-bold mb-2">
+                  ⚠️ COPY KEY NOW - IT WILL NOT BE SHOWN AGAIN
+                </p>
+                <div className="flex gap-2">
+                  <input
+                    id={`mt5-generated-key-${acc.id}`}
+                    name="generatedApiKey"
+                    aria-label="Generated MT5 API key"
+                    readOnly
+                    value={generatedKey.key}
+                    className="flex-1 bg-black/50 border border-yellow-800 text-yellow-200 font-mono text-sm p-2 rounded"
+                    onClick={(e) => e.currentTarget.select()}
+                  />
+                  <button
+                    onClick={() =>
+                      navigator.clipboard.writeText(generatedKey.key)
+                    }
+                    className="bg-yellow-800 hover:bg-yellow-700 text-yellow-100 px-4 rounded text-sm transition"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {!loading && accounts.length === 0 && (
+          <div className="text-center py-10 bg-gray-800/50 border border-dashed border-gray-700 rounded-lg">
+            <p className="text-gray-500">No accounts linked yet.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+==================== docs/Implement MT5 Cloud Protect.md ====================
+Implement MT5 Cloud Protect for the copy-trading system.
+
+Important context:
+This platform does not expose trading strategy inside the follower EA. The user trades manually on the master account. The follower EA only receives approved trade signals and executes them. Therefore, Cloud Protect must protect the copy-trading network, not strategy logic.
+
+Main protection goals:
+1. Prevent unauthorized users from receiving signals.
+2. Prevent one paid account/API key from being shared with many unpaid MT5 accounts.
+3. Stop expired subscribers from copying trades.
+4. Stop revoked users from continuing to copy.
+5. Block old EA versions.
+6. Detect duplicate devices/sessions abusing the same key.
+7. Ensure a follower can only copy from an assigned/allowed master account.
+
+Implementation requirements:
+- Inspect the existing backend structure before editing.
+- Reuse existing route/controller/service/repository/schema conventions.
+- Reuse existing Prisma patterns.
+- Reuse existing auth/user patterns.
+- Do not create a parallel architecture.
+- Do not break existing MT5 account dashboard behavior.
+
+Backend models/migration:
+Add or update the schema to support:
+- mt5_accounts with account_id, account_type, broker, server, status, subscription status or subscription relation, last_heartbeat_at, allowed master account relation if applicable.
+- mt5_api_keys with key_prefix, key_hash, revoked_at, last_used_at.
+- mt5_license_sessions with terminal_fingerprint, ip_address, ea_version, status, expires_at, last_seen_at.
+- mt5_signal_deliveries if signal delivery tracking already exists or fits the architecture.
+
+Security rules:
+- Never store raw API keys.
+- Generate raw API key once.
+- Store only hashed API keys.
+- Show the raw key only once after generation.
+- Do not log raw API keys.
+- Do not hardcode secrets.
+- Do not expose database URLs.
+- Validate all MT5 payloads with Zod.
+- Use safe reason codes for blocked responses.
+
+Required MT5 endpoints:
+1. POST /api/mt5/license/verify
+   Checks API key, accountId, broker/server, account status, subscription status, EA version, and session/device rules.
+   Returns allowed true/false, reason code, and short-lived session token if allowed.
+
+2. POST /api/mt5/heartbeat
+   Updates last heartbeat, EA version, terminal fingerprint, balance/equity if supported, and returns whether the EA should continue.
+
+3. POST /api/mt5/signals/pull
+   Checks license/session again before returning any signal.
+   If blocked, return allowed false and empty signals.
+   If allowed, return only signals assigned to that follower/master relationship.
+
+4. POST /api/mt5/trade/report
+   Allows follower EA to report copied trade success/failure, ticket number, error code, and execution result.
+
+Dashboard requirements:
+- Show MT5 account connection status:
+  - Connected
+  - Stale
+  - Offline
+  - Blocked
+  - Revoked
+  - Expired
+- Show API key state:
+  - No key
+  - Active key
+  - Revoked
+- Add Generate Key, Revoke Key, and Regenerate Key actions.
+- Show EA setup instructions:
+  - account_id
+  - server
+  - backend WebRequest URL
+  - API key
+- Hide raw key by default.
+- Add copy button.
+- Do not use browser alert.
+- Use existing toast or inline message pattern.
+
+Blocking rules:
+- If API key is invalid: BLOCK_INVALID_KEY
+- If key is revoked: BLOCK_KEY_REVOKED
+- If accountId does not match registered account: BLOCK_ACCOUNT_MISMATCH
+- If broker/server does not match: BLOCK_SERVER_MISMATCH
+- If account status is blocked/revoked: BLOCK_ACCOUNT_DISABLED
+- If subscription is expired: BLOCK_SUBSCRIPTION_EXPIRED
+- If EA version is below minimum: BLOCK_OLD_EA_VERSION
+- If duplicate device/session is suspicious: BLOCK_DUPLICATE_DEVICE or FLAG_DUPLICATE_DEVICE
+- If follower is not assigned to master: BLOCK_MASTER_NOT_ALLOWED
+
+Deliverables:
+- List all files changed.
+- Explain migration impact.
+- Explain new environment variables if any.
+- Explain how to test using curl/Postman.
+- Explain what the MQL5 EA must send to each endpoint.
+- Add TODO comments only where a real business decision is required.
+
+
+

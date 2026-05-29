@@ -1,134 +1,298 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
+import {
+  MT5AccountResponse,
+  MT5PlanUsageResponse,
+  userApi,
+} from "@/lib/api";
 
-// --- CONFIGURATION ---
-// This uses the snippet you provided.
-// It checks the specific backend var, then the general API var, then defaults to localhost.
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_BACKEND_URL ||
-  process.env.NEXT_PUBLIC_API_URL ||
-  "http://localhost:3001";
+type AccountType = "MASTER" | "SLAVE";
 
-// --- TYPES ---
-interface MT5Account {
-  id: string;
-  accountId: string;
-  accountType: "MASTER" | "SLAVE";
-  apiKey?: string;
-}
+type GeneratedKeyState = {
+  accountRecordId: string;
+  key: string;
+};
 
 export default function MT5AccountManager() {
-  // --- STATE ---
-  const [accounts, setAccounts] = useState<MT5Account[]>([]);
+  const [accounts, setAccounts] = useState<MT5AccountResponse[]>([]);
+  const [planUsage, setPlanUsage] = useState<MT5PlanUsageResponse | null>(null);
+
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [keyActionId, setKeyActionId] = useState<string | null>(null);
+
   const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  // Form State
   const [newAccountId, setNewAccountId] = useState("");
-  const [newAccountType, setNewAccountType] = useState("SLAVE");
+  const [newAccountType, setNewAccountType] = useState<AccountType>("SLAVE");
+  const [newBroker, setNewBroker] = useState("");
+  const [newServer, setNewServer] = useState("");
 
-  // Key Display State
-  const [generatedKey, setGeneratedKey] = useState<{
-    id: string;
-    key: string;
-  } | null>(null);
+  const [generatedKey, setGeneratedKey] = useState<GeneratedKeyState | null>(
+    null
+  );
 
-  // --- HELPERS ---
-  const getAuthHeaders = () => {
-    // Tries to get token from localStorage.
-    // If you use cookies, this part might need adjustment, but usually fine for JWT.
-    const token =
-      typeof window !== "undefined" ? localStorage.getItem("token") : "";
-    return {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    };
+  const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+
+  const getToken = () => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("token") || "";
   };
 
-  // --- API CALLS ---
-  const fetchAccounts = async () => {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/user/mt5-accounts`, {
-        headers: getAuthHeaders(),
-      });
-      if (!res.ok) throw new Error("Failed to load accounts");
-      setAccounts(await res.json());
-    } catch (err) {
-      console.error(err);
-      setError("Could not load accounts. Please ensure you are logged in.");
-    } finally {
+  const fetchAccounts = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    const token = getToken();
+
+    if (!token) {
+      setAccounts([]);
+      setPlanUsage(null);
+      setError("You are not logged in. Please log in again.");
       setLoading(false);
+      return;
     }
-  };
+
+    const response = await userApi.getMT5Accounts(token);
+
+    if (response.error || !response.data) {
+      setAccounts([]);
+      setPlanUsage(null);
+      setError(response.error || "Could not load MT5 accounts.");
+      setLoading(false);
+      return;
+    }
+
+    setAccounts(response.data.accounts || []);
+    setPlanUsage(response.data.planUsage || null);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     fetchAccounts();
-  }, []);
+  }, [fetchAccounts]);
 
-  const handleAddAccount = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddAccount = async (event: React.FormEvent) => {
+    event.preventDefault();
+
     setError("");
+    setMessage("");
+    setGeneratedKey(null);
+    setCopiedKeyId(null);
+
+    const accountId = newAccountId.trim();
+    const broker = newBroker.trim();
+    const server = newServer.trim();
+
+    if (!accountId) {
+      setError("MT5 Login ID is required.");
+      return;
+    }
+
+    if (!server) {
+      setError("MT5 server is required.");
+      return;
+    }
+
+    const token = getToken();
+
+    if (!token) {
+      setError("You are not logged in. Please log in again.");
+      return;
+    }
+
+    setSaving(true);
+
+    const response = await userApi.addMT5Account(token, {
+      accountId,
+      accountType: newAccountType,
+      broker: broker || undefined,
+      server,
+    });
+
+    if (response.error) {
+      setError(response.error);
+      setSaving(false);
+      return;
+    }
+
+    setNewAccountId("");
+    setNewAccountType("SLAVE");
+    setNewBroker("");
+    setNewServer("");
+    setMessage("MT5 account added successfully.");
+
+    await fetchAccounts();
+    setSaving(false);
+  };
+
+  const handleGenerateKey = async (accountRecordId: string) => {
+    setError("");
+    setMessage("");
+    setGeneratedKey(null);
+    setCopiedKeyId(null);
+    setKeyActionId(accountRecordId);
+
+    const token = getToken();
+
+    if (!token) {
+      setError("You are not logged in. Please log in again.");
+      setKeyActionId(null);
+      return;
+    }
+
+    const response = await userApi.generateMT5ApiKey(token, accountRecordId);
+
+    if (response.error || !response.data?.apiKey) {
+      setError(response.error || "Could not generate API key.");
+      setKeyActionId(null);
+      return;
+    }
+
+    setGeneratedKey({
+      accountRecordId,
+      key: response.data.apiKey,
+    });
+
+    setMessage(
+      "API key generated. Copy it now because the raw key will not be shown again."
+    );
+
+    await fetchAccounts();
+    setKeyActionId(null);
+  };
+
+  const handleRevokeKey = async (accountRecordId: string) => {
+    setError("");
+    setMessage("");
+    setGeneratedKey(null);
+    setCopiedKeyId(null);
+    setKeyActionId(accountRecordId);
+
+    const token = getToken();
+
+    if (!token) {
+      setError("You are not logged in. Please log in again.");
+      setKeyActionId(null);
+      return;
+    }
+
+    const response = await userApi.revokeMT5ApiKey(token, accountRecordId);
+
+    if (response.error) {
+      setError(response.error);
+      setKeyActionId(null);
+      return;
+    }
+
+    setMessage("API key revoked successfully.");
+
+    await fetchAccounts();
+    setKeyActionId(null);
+  };
+
+  const copyGeneratedKey = async (accountRecordId: string) => {
+    if (!generatedKey?.key) return;
+
     try {
-      const res = await fetch(`${API_BASE_URL}/api/user/mt5-accounts`, {
-        method: "POST",
-        headers: getAuthHeaders(),
-        body: JSON.stringify({
-          accountId: newAccountId,
-          accountType: newAccountType,
-        }),
-      });
+      await navigator.clipboard.writeText(generatedKey.key);
 
-      if (!res.ok) throw new Error("Failed to add account");
+      setError("");
+      setCopiedKeyId(accountRecordId);
+      setMessage("API key copied.");
 
-      await fetchAccounts();
-      setNewAccountId("");
-    } catch (err) {
-      setError("Error adding account. Ensure ID is unique.");
+      window.setTimeout(() => {
+        setCopiedKeyId((currentId) =>
+          currentId === accountRecordId ? null : currentId
+        );
+      }, 1500);
+    } catch {
+      setError("Could not copy API key. Please copy it manually.");
     }
   };
 
-  const generateKey = async (uuid: string) => {
-    try {
-      const res = await fetch(
-        `${API_BASE_URL}/api/user/mt5-accounts/${uuid}/api-key`,
-        {
-          method: "POST",
-          headers: getAuthHeaders(),
-        }
-      );
-
-      if (!res.ok) throw new Error("Failed to generate key");
-
-      const data = await res.json();
-      setGeneratedKey({ id: uuid, key: data.apiKey });
-    } catch (err) {
-      setError("Could not generate API Key.");
-    }
+  const getConnectionLabel = (account: MT5AccountResponse) => {
+    if (account.isConnected) return "Connected";
+    if (account.lastHeartbeat) return "Stale";
+    return "Offline";
   };
 
-  // --- RENDER (Dark Mode UI) ---
+  const getConnectionClasses = (account: MT5AccountResponse) => {
+    if (account.isConnected) return "bg-green-900 text-green-200";
+    if (account.lastHeartbeat) return "bg-yellow-900 text-yellow-200";
+    return "bg-gray-700 text-gray-300";
+  };
+
+  const formatHeartbeat = (value: string | null) => {
+    if (!value) return "Never connected";
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return "Unknown";
+    }
+
+    return date.toLocaleString();
+  };
+
   return (
     <div className="w-full">
-      {/* Error Message */}
       {error && (
-        <div className="bg-red-900/50 border-l-4 border-red-500 text-red-200 p-4 mb-6 rounded">
+        <div className="mb-6 rounded border-l-4 border-red-500 bg-red-900/50 p-4 text-red-200">
           <p>{error}</p>
         </div>
       )}
 
-      {/* Add Account Card */}
-      <div className="bg-gray-800 border border-gray-700 p-6 rounded-lg mb-8 shadow-sm">
-        <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4">
-          Add New Connection
+      {message && (
+        <div className="mb-6 rounded border-l-4 border-green-500 bg-green-900/40 p-4 text-green-200">
+          <p>{message}</p>
+        </div>
+      )}
+
+      {planUsage && (
+        <div className="mb-6 grid gap-4 md:grid-cols-3">
+          <div className="rounded-lg border border-gray-700 bg-gray-800 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              Slave Usage
+            </p>
+            <p className="mt-2 text-2xl font-bold text-white">
+              {planUsage.currentSlaveAccounts} / {planUsage.maxSlaveAccounts}
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-gray-700 bg-gray-800 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              Subscription
+            </p>
+            <p className="mt-2 text-lg font-semibold text-white">
+              {planUsage.subscriptionStatus || "No subscription"}
+            </p>
+          </div>
+
+          <div className="rounded-lg border border-gray-700 bg-gray-800 p-4">
+            <p className="text-xs font-bold uppercase tracking-wider text-gray-400">
+              Tier
+            </p>
+            <p className="mt-2 text-lg font-semibold text-white">
+              {planUsage.tierName || "No tier"}
+            </p>
+          </div>
+        </div>
+      )}
+
+      <div className="mb-8 rounded-lg border border-gray-700 bg-gray-800 p-6 shadow-sm">
+        <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-gray-400">
+          Add New MT5 Connection
         </h3>
-        <form
-          onSubmit={handleAddAccount}
-          className="flex flex-col md:flex-row gap-4 items-end"
-        >
-          {/* Input: ID */}
-          <div className="flex-1 w-full">
-            <label htmlFor="mt5-manager-login-id" className="block text-gray-400 text-xs mb-1">
+
+        <form onSubmit={handleAddAccount} className="grid gap-4 md:grid-cols-5">
+          <div className="md:col-span-1">
+            <label
+              htmlFor="mt5-manager-login-id"
+              className="mb-1 block text-xs text-gray-400"
+            >
               MT5 Login ID
             </label>
             <input
@@ -137,108 +301,229 @@ export default function MT5AccountManager() {
               aria-label="MT5 Login ID"
               type="text"
               value={newAccountId}
-              onChange={(e) => setNewAccountId(e.target.value)}
+              onChange={(event) => setNewAccountId(event.target.value)}
               placeholder="e.g. 88812345"
-              className="w-full bg-gray-900 border border-gray-600 text-white rounded p-2 focus:border-blue-500 focus:outline-none transition-colors"
+              className="w-full rounded border border-gray-600 bg-gray-900 p-2 text-white transition-colors focus:border-blue-500 focus:outline-none"
               required
             />
           </div>
 
-          {/* Input: Type */}
-          <div className="w-full md:w-48">
-            <label htmlFor="mt5-manager-account-type" className="block text-gray-400 text-xs mb-1">Type</label>
+          <div className="md:col-span-1">
+            <label
+              htmlFor="mt5-manager-account-type"
+              className="mb-1 block text-xs text-gray-400"
+            >
+              Type
+            </label>
             <select
               id="mt5-manager-account-type"
               name="accountType"
               value={newAccountType}
-              onChange={(e) => setNewAccountType(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-600 text-white rounded p-2 focus:border-blue-500 focus:outline-none"
+              onChange={(event) =>
+                setNewAccountType(event.target.value as AccountType)
+              }
+              className="w-full rounded border border-gray-600 bg-gray-900 p-2 text-white focus:border-blue-500 focus:outline-none"
             >
-              <option value="SLAVE">Receiver (Slave)</option>
-              <option value="MASTER">Sender (Master)</option>
+              <option value="SLAVE">Receiver / Slave</option>
+              <option value="MASTER">Sender / Master</option>
             </select>
           </div>
 
-          {/* Submit Button */}
-          <button
-            type="submit"
-            className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded font-medium transition duration-200"
-          >
-            Add Account
-          </button>
+          <div className="md:col-span-1">
+            <label
+              htmlFor="mt5-manager-broker"
+              className="mb-1 block text-xs text-gray-400"
+            >
+              Broker Optional
+            </label>
+            <input
+              id="mt5-manager-broker"
+              name="broker"
+              aria-label="Broker"
+              type="text"
+              value={newBroker}
+              onChange={(event) => setNewBroker(event.target.value)}
+              placeholder="e.g. IC Markets"
+              className="w-full rounded border border-gray-600 bg-gray-900 p-2 text-white transition-colors focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div className="md:col-span-1">
+            <label
+              htmlFor="mt5-manager-server"
+              className="mb-1 block text-xs text-gray-400"
+            >
+              Server Required
+            </label>
+            <input
+              id="mt5-manager-server"
+              name="server"
+              aria-label="MT5 Server"
+              type="text"
+              value={newServer}
+              onChange={(event) => setNewServer(event.target.value)}
+              placeholder="e.g. ICMarketsSC-Demo"
+              className="w-full rounded border border-gray-600 bg-gray-900 p-2 text-white transition-colors focus:border-blue-500 focus:outline-none"
+              required
+            />
+          </div>
+
+          <div className="flex items-end md:col-span-1">
+            <button
+              type="submit"
+              disabled={saving}
+              className="w-full rounded bg-blue-600 px-6 py-2 font-medium text-white transition duration-200 hover:bg-blue-500 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {saving ? "Adding..." : "Add Account"}
+            </button>
+          </div>
         </form>
       </div>
 
-      {/* Account List */}
       <div className="space-y-4">
-        <h3 className="text-gray-400 text-xs font-bold uppercase tracking-wider">
+        <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400">
           Active Connections
         </h3>
 
-        {loading && <p className="text-gray-500 animate-pulse">Loading...</p>}
+        {loading && <p className="animate-pulse text-gray-500">Loading...</p>}
 
-        {accounts.map((acc) => (
-          <div
-            key={acc.id}
-            className="bg-gray-800 border border-gray-700 rounded-lg p-4 flex flex-col gap-4"
-          >
-            <div className="flex justify-between items-center">
-              <div className="flex items-center gap-3">
-                <span
-                  className={`px-2 py-0.5 rounded text-xs font-bold ${
-                    acc.accountType === "MASTER"
-                      ? "bg-purple-900 text-purple-200"
-                      : "bg-green-900 text-green-200"
-                  }`}
-                >
-                  {acc.accountType}
-                </span>
-                <span className="text-white font-mono text-lg">
-                  {acc.accountId}
-                </span>
-              </div>
+        {!loading &&
+          accounts.map((account) => (
+            <div
+              key={account.id}
+              className="flex flex-col gap-4 rounded-lg border border-gray-700 bg-gray-800 p-4"
+            >
+              <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs font-bold ${
+                        account.accountType === "MASTER"
+                          ? "bg-purple-900 text-purple-200"
+                          : "bg-green-900 text-green-200"
+                      }`}
+                    >
+                      {account.accountType}
+                    </span>
 
-              <button
-                onClick={() => generateKey(acc.id)}
-                className="text-sm text-blue-400 hover:text-blue-300 hover:underline font-medium"
-              >
-                Generate Key
-              </button>
-            </div>
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs font-bold ${getConnectionClasses(
+                        account
+                      )}`}
+                    >
+                      {getConnectionLabel(account)}
+                    </span>
 
-            {/* Secret Key Display Area */}
-            {generatedKey?.id === acc.id && (
-              <div className="bg-yellow-900/30 border border-yellow-700 p-4 rounded animate-in fade-in slide-in-from-top-2">
-                <p className="text-yellow-500 text-xs font-bold mb-2">
-                  ⚠️ COPY KEY NOW - IT WILL NOT BE SHOWN AGAIN
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    id={`mt5-generated-key-${acc.id}`}
-                    name="generatedApiKey"
-                    aria-label="Generated MT5 API key"
-                    readOnly
-                    value={generatedKey.key}
-                    className="flex-1 bg-black/50 border border-yellow-800 text-yellow-200 font-mono text-sm p-2 rounded"
-                    onClick={(e) => e.currentTarget.select()}
-                  />
+                    <span
+                      className={`rounded px-2 py-0.5 text-xs font-bold ${
+                        account.hasApiKey
+                          ? "bg-blue-900 text-blue-200"
+                          : "bg-gray-700 text-gray-300"
+                      }`}
+                    >
+                      {account.hasApiKey ? "API Key Active" : "No API Key"}
+                    </span>
+                  </div>
+
+                  <div>
+                    <p className="font-mono text-lg text-white">
+                      {account.accountId}
+                    </p>
+                    <p className="text-sm text-gray-400">
+                      Broker: {account.broker || "Not set"}
+                    </p>
+                    <p className="text-sm text-gray-400">
+                      Server: {account.server || "Not set"}
+                    </p>
+                    <p className="text-sm text-gray-400">
+                      Last heartbeat: {formatHeartbeat(account.lastHeartbeat)}
+                    </p>
+                  </div>
+
+                  <div className="grid gap-2 text-sm text-gray-400 md:grid-cols-3">
+                    <p>Balance: {account.balance ?? "N/A"}</p>
+                    <p>Equity: {account.equity ?? "N/A"}</p>
+                    <p>Profit: {account.profit ?? "N/A"}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 md:min-w-44">
                   <button
-                    onClick={() =>
-                      navigator.clipboard.writeText(generatedKey.key)
-                    }
-                    className="bg-yellow-800 hover:bg-yellow-700 text-yellow-100 px-4 rounded text-sm transition"
+                    type="button"
+                    onClick={() => handleGenerateKey(account.id)}
+                    disabled={keyActionId === account.id}
+                    className="rounded border border-blue-500/50 px-4 py-2 text-sm font-medium text-blue-300 transition hover:bg-blue-950 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    Copy
+                    {account.hasApiKey ? "Regenerate Key" : "Generate Key"}
                   </button>
+
+                  {account.hasApiKey && (
+                    <button
+                      type="button"
+                      onClick={() => handleRevokeKey(account.id)}
+                      disabled={keyActionId === account.id}
+                      className="rounded border border-red-500/50 px-4 py-2 text-sm font-medium text-red-300 transition hover:bg-red-950 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Revoke Key
+                    </button>
+                  )}
                 </div>
               </div>
-            )}
-          </div>
-        ))}
+
+              {generatedKey?.accountRecordId === account.id && (
+                <div className="rounded border border-yellow-700 bg-yellow-900/30 p-4">
+                  <p className="mb-2 text-xs font-bold text-yellow-500">
+                    COPY THIS KEY NOW. It will not be shown again after you
+                    leave or refresh this page.
+                  </p>
+
+                  <div className="flex flex-col gap-2 md:flex-row">
+                    <input
+                      id={`mt5-generated-key-${account.id}`}
+                      name="generatedApiKey"
+                      aria-label="Generated MT5 API key"
+                      readOnly
+                      value={generatedKey.key}
+                      className="flex-1 rounded border border-yellow-800 bg-black/50 p-2 font-mono text-sm text-yellow-200"
+                      onClick={(event) => event.currentTarget.select()}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => copyGeneratedKey(account.id)}
+                      aria-label="Copy generated API key"
+                      title={copiedKeyId === account.id ? "Copied" : "Copy"}
+                      className={`rounded px-4 py-2 text-sm font-medium transition active:scale-95 ${
+                        copiedKeyId === account.id
+                          ? "bg-green-700 text-white"
+                          : "bg-yellow-800 text-yellow-100 hover:bg-yellow-700"
+                      }`}
+                    >
+                      {copiedKeyId === account.id ? "✓ Copied!" : "Copy"}
+                    </button>
+                  </div>
+
+                  <div className="mt-4 rounded border border-gray-700 bg-black/20 p-3 text-sm text-gray-300">
+                    <p className="font-semibold text-gray-200">
+                      EA Setup Values
+                    </p>
+                    <p>account_id: {account.accountId}</p>
+                    <p>server: {account.server || "Not set"}</p>
+                    <p>
+                      WebRequest URL:{" "}
+                      {process.env.NEXT_PUBLIC_API_URL ||
+                        process.env.NEXT_PUBLIC_BACKEND_URL ||
+                        "http://localhost:3001"}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
 
         {!loading && accounts.length === 0 && (
-          <div className="text-center py-10 bg-gray-800/50 border border-dashed border-gray-700 rounded-lg">
-            <p className="text-gray-500">No accounts linked yet.</p>
+          <div className="rounded-lg border border-dashed border-gray-700 bg-gray-800/50 py-10 text-center">
+            <p className="text-gray-500">No MT5 accounts linked yet.</p>
           </div>
         )}
       </div>
