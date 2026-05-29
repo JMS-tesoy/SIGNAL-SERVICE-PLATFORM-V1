@@ -114,10 +114,26 @@ export function findMt5AccountsByUserId(userId: string) {
   });
 }
 
-export function updateMt5AccountApiKey(accountId: string, apiKey: string | null) {
+type UpdateMt5AccountApiKeyData = {
+  apiKey?: string | null;
+  apiKeyPrefix?: string | null;
+  apiKeyRevokedAt?: Date | null;
+  apiKeyLastUsedAt?: Date | null;
+  status?: "ACTIVE" | "BLOCKED" | "REVOKED" | "EXPIRED" | "PENDING";
+  minEaVersion?: string;
+  maxDevices?: number;
+  allowSignalSend?: boolean;
+  allowSignalReceive?: boolean;
+  isConnected?: boolean;
+};
+
+export function updateMt5AccountApiKey(
+  accountId: string,
+  data: UpdateMt5AccountApiKeyData
+) {
   return prisma.mT5Account.update({
     where: { id: accountId },
-    data: { apiKey },
+    data,
   });
 }
 

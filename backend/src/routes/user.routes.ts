@@ -270,15 +270,17 @@ router.get(
     ]);
 
     await Promise.all(
-      accounts
-        .filter((account) => account.apiKey && !isHashedMt5ApiKey(account.apiKey))
-        .map((account) =>
-          userRepository.updateMt5AccountApiKey(
-            account.id,
-            hashMt5ApiKey(account.apiKey!)
-          )
-        )
-    );
+  accounts
+    .filter((account) => account.apiKey && !isHashedMt5ApiKey(account.apiKey))
+    .map((account) =>
+      userRepository.updateMt5AccountApiKey(account.id, {
+        apiKey: hashMt5ApiKey(account.apiKey!),
+        apiKeyPrefix: account.apiKey!.slice(0, 12),
+        apiKeyRevokedAt: null,
+        apiKeyLastUsedAt: null,
+      })
+    )
+);
 
     res.json({
       accounts: accounts.map(formatMt5Account),
@@ -310,10 +312,27 @@ router.post(
 
     const apiKey = generateMt5ApiKey();
 
-    await userRepository.updateMt5AccountApiKey(
-      accountId,
-      hashMt5ApiKey(apiKey)
-    );
+    const account = await userRepository.findMt5AccountByIdAndUserId(
+  accountId,
+  req.user!.id
+);
+
+if (!account) {
+  return res.status(404).json({ error: "Account not found" });
+}
+
+await userRepository.updateMt5AccountApiKey(accountId, {
+  apiKey: hashMt5ApiKey(apiKey),
+  apiKeyPrefix: apiKey.slice(0, 12),
+  apiKeyRevokedAt: null,
+  apiKeyLastUsedAt: null,
+  status: "ACTIVE",
+  minEaVersion: "1.0.0",
+  maxDevices: 1,
+  allowSignalSend: account.accountType === "MASTER",
+  allowSignalReceive: account.accountType === "SLAVE",
+  isConnected: false,
+});
 
     res.json({
       apiKey,
@@ -344,7 +363,10 @@ router.delete(
       return;
     }
 
-    await userRepository.updateMt5AccountApiKey(accountId, null);
+    await userRepository.updateMt5AccountApiKey(accountId, {
+  apiKeyRevokedAt: new Date(),
+  isConnected: false,
+});
 
     res.json({ message: "API key revoked" });
   })
