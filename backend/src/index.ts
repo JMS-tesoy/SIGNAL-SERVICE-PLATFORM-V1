@@ -87,8 +87,6 @@ app.use("/api/signals", signalLimiter);
 // Apply the Loose Human Limiter
 app.use("/api/auth", authLimiter);
 
-app.use("/api/mt5", mt5Routes);
-
 // Apply the General Limiter to everything else
 // We list these explicitly so they don't overlap with Signals or Auth
 app.use(generalRateLimitedRoutes, limiter);
@@ -125,6 +123,9 @@ app.get("/health", (req: Request, res: Response) => {
 // =============================================================================
 // API ROUTES
 // =============================================================================
+
+// MT5 Cloud Protect routes must be mounted after express.json().
+app.use("/api/mt5", mt5Routes);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/security", securityRoutes);
