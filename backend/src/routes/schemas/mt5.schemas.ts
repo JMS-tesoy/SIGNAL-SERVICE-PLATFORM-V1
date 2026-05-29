@@ -49,6 +49,7 @@ export const mt5TradeReportSchema = z.object({
   accountId: accountIdSchema,
   broker: brokerSchema,
   server: serverSchema,
+  terminalFingerprint: terminalFingerprintSchema,
   ticket: z.union([z.string().trim().min(1), z.number().int().positive()]).optional(),
   symbol: z.string().trim().min(1).max(30),
   orderType: z.enum(["BUY", "SELL"]),

@@ -20,6 +20,24 @@ type Mt5AuthContext = {
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["ACTIVE", "TRIALING"]);
 const STALE_SESSION_MS = 2 * 60 * 1000;
 
+function isSessionStale(lastHeartbeatAt: Date | null | undefined, now = new Date()) {
+  if (!lastHeartbeatAt) {
+    return true;
+  }
+
+  return now.getTime() - lastHeartbeatAt.getTime() > STALE_SESSION_MS;
+}
+
+async function markSessionStale(sessionId: string) {
+  await prisma.mT5LicenseSession.update({
+    where: { id: sessionId },
+    data: {
+      status: "STALE",
+      lastSeenAt: new Date(),
+    },
+  });
+}
+
 function normalizeOptional(value: string | null | undefined) {
   return value?.trim() || null;
 }
@@ -316,8 +334,21 @@ export async function pullMt5Signals(rawApiKey: string | null, input: Mt5Signals
     },
   });
 
-  if (!session) {
+   if (!session) {
     return { ...blocked("BLOCK_SESSION_REVOKED", "Session is invalid"), signals: [] };
+  }
+
+  if (isSessionStale(session.lastHeartbeatAt)) {
+    await markSessionStale(session.id);
+
+    await prisma.mT5Account.update({
+      where: { id: context.mt5Account.id },
+      data: {
+        isConnected: false,
+      },
+    });
+
+    return { ...blocked("BLOCK_SESSION_STALE", "Session is stale"), signals: [] };
   }
 
   const executions = await prisma.signalExecution.findMany({
@@ -367,17 +398,34 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
     return { ...blocked("BLOCK_INVALID_KEY", "Invalid API key"), ok: false };
   }
 
-  const session = await prisma.mT5LicenseSession.findFirst({
+   const session = await prisma.mT5LicenseSession.findFirst({
     where: {
       id: input.sessionId,
       mt5AccountId: context.mt5Account.id,
+      terminalFingerprint: input.terminalFingerprint,
       eaType: "RECEIVER",
-      status: "ACTIVE",
     },
   });
 
-  if (!session) {
+     if (!session) {
     return { ...blocked("BLOCK_SESSION_REVOKED", "Session is invalid"), ok: false };
+  }
+
+  if (session.status === "REVOKED" || session.status === "BLOCKED") {
+    return { ...blocked("BLOCK_SESSION_REVOKED", "Session is blocked"), ok: false };
+  }
+
+  if (session.status === "STALE" || isSessionStale(session.lastHeartbeatAt)) {
+    await markSessionStale(session.id);
+
+    await prisma.mT5Account.update({
+      where: { id: context.mt5Account.id },
+      data: {
+        isConnected: false,
+      },
+    });
+
+    return { ...blocked("BLOCK_SESSION_STALE", "Session is stale"), ok: false };
   }
 
   const baseError = validateBaseAccount(context, {
@@ -392,14 +440,36 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
   const permissionError = validateEaPermission(context.mt5Account, "RECEIVER");
   if (permissionError) return { ...permissionError, ok: false };
 
-  const executionStatus = input.status === "FAILED" ? "FAILED" : "EXECUTED";
+    const executionStatus = input.status === "FAILED" ? "FAILED" : "EXECUTED";
 
-  await prisma.signalExecution.updateMany({
+  const matchingExecution = await prisma.signalExecution.findFirst({
     where: {
       signalId: input.signalId,
       userId: context.mt5Account.userId,
       mt5AccountId: context.mt5Account.id,
       status: "PENDING",
+      signal: {
+        status: { in: ["PENDING", "ACTIVE"] },
+        expiresAt: { gt: new Date() },
+        ...(context.mt5Account.allowedMasterAccountId
+          ? { mt5AccountId: context.mt5Account.allowedMasterAccountId }
+          : {}),
+      },
+    },
+  });
+
+  if (!matchingExecution) {
+    return {
+      ok: false,
+      allowed: false,
+      code: "BLOCK_SIGNAL_NOT_ALLOWED",
+      message: "Signal is not assigned to this follower account",
+    };
+  }
+
+  await prisma.signalExecution.update({
+    where: {
+      id: matchingExecution.id,
     },
     data: {
       status: executionStatus,
@@ -418,7 +488,7 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
     },
   });
 
-  return {
+    return {
     ok: true,
     message: "Trade report received",
   };

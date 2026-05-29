@@ -64,9 +64,9 @@ const CustomTooltip = ({ active, payload, label }: any) => {
 export default function AdminRevenuePage() {
   const { accessToken } = useAuthStore();
   const [revenueData, setRevenueData] = useState<{
-    monthlyRevenue: Record<string, number>;
-    total: number;
-    byTier: Record<string, number>;
+    monthlyRevenue?: Record<string, number> | null;
+    total?: number | null;
+    byTier?: Record<string, number> | null;
   } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -89,46 +89,45 @@ export default function AdminRevenuePage() {
     fetchRevenue();
   }, [accessToken]);
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number | null | undefined) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: 0,
       maximumFractionDigits: 0,
-    }).format(value);
+    }).format(Number(value) || 0);
   };
 
+  const safeMonthlyRevenue = revenueData?.monthlyRevenue ?? {};
+  const safeTierRevenue = revenueData?.byTier ?? {};
+
   // Transform monthly revenue data for chart
-  const monthlyChartData = revenueData
-    ? Object.entries(revenueData.monthlyRevenue)
-        .map(([month, amount]) => ({
-          month: new Date(month + '-01').toLocaleDateString('en-US', {
-            month: 'short',
-            year: '2-digit',
-          }),
-          amount,
-        }))
-        .slice(-12)
-    : [];
+  const monthlyChartData = Object.entries(safeMonthlyRevenue)
+    .map(([month, amount]) => ({
+      month: new Date(month + '-01').toLocaleDateString('en-US', {
+        month: 'short',
+        year: '2-digit',
+      }),
+      amount: Number(amount) || 0,
+    }))
+    .slice(-12);
 
   // Transform tier data for pie chart
-  const tierChartData = revenueData
-    ? Object.entries(revenueData.byTier).map(([tier, amount]) => ({
-        name: tier.charAt(0).toUpperCase() + tier.slice(1),
-        value: amount,
-        color: TIER_COLORS[tier.toLowerCase()] || '#64748b',
-      }))
-    : [];
+  const tierChartData = Object.entries(safeTierRevenue).map(([tier, amount]) => ({
+    name: tier.charAt(0).toUpperCase() + tier.slice(1),
+    value: Number(amount) || 0,
+    color: TIER_COLORS[tier.toLowerCase()] || '#64748b',
+  }));
 
   // Calculate current month revenue
   const currentMonthKey = new Date().toISOString().slice(0, 7);
-  const currentMonthRevenue = revenueData?.monthlyRevenue[currentMonthKey] || 0;
+  const currentMonthRevenue = Number(safeMonthlyRevenue[currentMonthKey]) || 0;
 
   // Calculate previous month revenue for comparison
   const prevDate = new Date();
   prevDate.setMonth(prevDate.getMonth() - 1);
   const prevMonthKey = prevDate.toISOString().slice(0, 7);
-  const prevMonthRevenue = revenueData?.monthlyRevenue[prevMonthKey] || 0;
+  const prevMonthRevenue = Number(safeMonthlyRevenue[prevMonthKey]) || 0;
   const monthChange =
     prevMonthRevenue > 0
       ? Math.round(((currentMonthRevenue - prevMonthRevenue) / prevMonthRevenue) * 100)
@@ -176,7 +175,7 @@ export default function AdminRevenuePage() {
           </div>
           <p className="text-foreground-muted text-sm mb-1">Total Revenue</p>
           <p className="text-3xl font-display font-bold text-accent-green">
-            {formatCurrency(revenueData?.total || 0)}
+            {formatCurrency(revenueData?.total)}
           </p>
         </motion.div>
 

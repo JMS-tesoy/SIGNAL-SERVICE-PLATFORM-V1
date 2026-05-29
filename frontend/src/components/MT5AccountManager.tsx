@@ -14,6 +14,11 @@ type GeneratedKeyState = {
   key: string;
 };
 
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_BACKEND_URL ||
+  "http://localhost:3001";
+
 export default function MT5AccountManager() {
   const [accounts, setAccounts] = useState<MT5AccountResponse[]>([]);
   const [planUsage, setPlanUsage] = useState<MT5PlanUsageResponse | null>(null);
@@ -502,22 +507,65 @@ export default function MT5AccountManager() {
                       {copiedKeyId === account.id ? "✓ Copied!" : "Copy"}
                     </button>
                   </div>
-
-                  <div className="mt-4 rounded border border-gray-700 bg-black/20 p-3 text-sm text-gray-300">
-                    <p className="font-semibold text-gray-200">
-                      EA Setup Values
-                    </p>
-                    <p>account_id: {account.accountId}</p>
-                    <p>server: {account.server || "Not set"}</p>
-                    <p>
-                      WebRequest URL:{" "}
-                      {process.env.NEXT_PUBLIC_API_URL ||
-                        process.env.NEXT_PUBLIC_BACKEND_URL ||
-                        "http://localhost:3001"}
-                    </p>
-                  </div>
                 </div>
               )}
+
+              <div
+                className={`rounded border p-3 text-sm ${
+                  account.accountType === "MASTER"
+                    ? "border-blue-700/70 bg-blue-950/20 text-blue-100"
+                    : "border-emerald-700/70 bg-emerald-950/20 text-emerald-100"
+                }`}
+              >
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-gray-100">
+                    Cloud Protect EA Setup Values
+                  </p>
+
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                      account.accountType === "MASTER"
+                        ? "bg-blue-500/15 text-blue-300 ring-1 ring-blue-500/40"
+                        : "bg-emerald-500/15 text-emerald-300 ring-1 ring-emerald-500/40"
+                    }`}
+                  >
+                    {account.accountType === "MASTER" ? "Sender EA" : "Receiver EA"}
+                  </span>
+                </div>
+
+                <p
+                  className={`mb-3 text-xs font-medium ${
+                    account.accountType === "MASTER"
+                      ? "text-blue-300"
+                      : "text-emerald-300"
+                  }`}
+                >
+                  {account.accountType === "MASTER"
+                    ? "Sender EA setup — copy these values into your Sender EA."
+                    : "Receiver EA setup — copy these values into your Receiver EA."}
+                </p>
+
+                <div className="space-y-1 text-gray-300">
+                  <p>account_id: {account.accountId}</p>
+                  <p>broker: {account.broker || "Not set"}</p>
+                  <p>server: {account.server || "Not set"}</p>
+                  <p>License Verify URL: {API_BASE_URL}/api/mt5/license/verify</p>
+                  <p>Heartbeat URL: {API_BASE_URL}/api/mt5/heartbeat</p>
+
+                  {account.accountType === "MASTER" ? (
+                    <p>Signal Push URL: Not enabled yet</p>
+                  ) : (
+                    <>
+                      <p>Signal Pull URL: {API_BASE_URL}/api/mt5/signals/pull</p>
+                      <p>Trade Report URL: {API_BASE_URL}/api/mt5/trade/report</p>
+                    </>
+                  )}
+
+                  <p>WebRequest Base URL: {API_BASE_URL}</p>
+                  <p>Required Header: Authorization: Bearer &lt;API_KEY&gt;</p>
+                </div>
+              </div>
+
             </div>
           ))}
 
