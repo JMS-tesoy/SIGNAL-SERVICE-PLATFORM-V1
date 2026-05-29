@@ -2,6 +2,7 @@
 // SIGNAL SERVICE BACKEND - Main Application Entry Point
 // =============================================================================
 
+import mt5Routes from "./routes/mt5.routes.js";
 import "dotenv/config";
 import express, { Request, Response } from "express";
 import path from "node:path";
@@ -85,6 +86,8 @@ app.use("/api/signals", signalLimiter);
 
 // Apply the Loose Human Limiter
 app.use("/api/auth", authLimiter);
+
+app.use("/api/mt5", mt5Routes);
 
 // Apply the General Limiter to everything else
 // We list these explicitly so they don't overlap with Signals or Auth

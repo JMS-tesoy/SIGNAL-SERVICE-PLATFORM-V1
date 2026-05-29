@@ -56,6 +56,7 @@ export default function DashboardLayout({
   const { user, accessToken, isAuthenticated, isLoading, logout, setUser, setLoading } = useAuthStore();
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const hydratedTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -273,15 +274,59 @@ export default function DashboardLayout({
             <ThemeToggle />
 
             {/* Notifications */}
-            <button className="relative p-2 rounded-lg hover:bg-background-elevated text-foreground-muted hover:text-foreground transition">
-              <Bell className="w-5 h-5" />
-              <span className="absolute top-1 right-1 w-2 h-2 bg-accent-red rounded-full" />
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setNotificationsOpen((current) => !current);
+                  setUserMenuOpen(false);
+                }}
+                aria-label="Open notifications"
+                aria-expanded={notificationsOpen}
+                className="relative p-2 rounded-lg hover:bg-background-elevated text-foreground-muted hover:text-foreground transition active:scale-95"
+              >
+                <Bell className="w-5 h-5" />
+                <span className="absolute top-1 right-1 w-2 h-2 bg-accent-red rounded-full" />
+              </button>
+
+              <AnimatePresence>
+                {notificationsOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 10 }}
+                    className="absolute right-0 top-full mt-2 w-80 overflow-hidden rounded-xl border border-border bg-background-elevated shadow-xl"
+                  >
+                    <div className="border-b border-border p-4">
+                      <p className="font-semibold text-foreground">Notifications</p>
+                      <p className="mt-1 text-sm text-foreground-muted">
+                        Recent account, trading, and security updates.
+                      </p>
+                    </div>
+
+                    <div className="p-4">
+                      <div className="rounded-lg bg-background-secondary p-3">
+                        <p className="text-sm font-medium text-foreground">
+                          No new notifications yet
+                        </p>
+                        <p className="mt-1 text-xs text-foreground-muted">
+                          Alerts will appear here when there are account, signal,
+                          or security updates.
+                        </p>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* User menu */}
             <div className="relative">
               <button
-                onClick={() => setUserMenuOpen(!userMenuOpen)}
+                onClick={() => {
+                  setUserMenuOpen((current) => !current);
+                  setNotificationsOpen(false);
+                }}
                 className="flex items-center gap-2 p-2 rounded-lg hover:bg-background-elevated transition"
               >
                 <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center overflow-hidden">
@@ -310,7 +355,10 @@ export default function DashboardLayout({
                       <Link
                         href="/dashboard/settings"
                         className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-background-secondary text-foreground-muted hover:text-foreground transition"
-                        onClick={() => setUserMenuOpen(false)}
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          setNotificationsOpen(false);
+                        }}
                       >
                         <Settings className="w-4 h-4" />
                         Settings

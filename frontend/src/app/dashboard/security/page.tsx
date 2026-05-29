@@ -343,7 +343,7 @@ export default function SecurityPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-5xl space-y-6 px-4 sm:px-6 lg:px-0">
+    <div className="mx-auto w-full max-w-7xl space-y-6 px-4 sm:px-6 lg:px-8">
       <div>
         <h1 className="text-2xl font-bold mb-2">Security Settings</h1>
         <p className="text-foreground-muted">
@@ -358,35 +358,71 @@ export default function SecurityPage() {
         </div>
       )}
 
-      <TwoFactorCard
-        status={status}
-        setupStep={setupStep}
-        actionLoading={actionLoading}
-        onSetupTOTP={handleSetupTOTP}
-        onShowDisable={() => setShowDisable(true)}
-      />
+      <div className="grid gap-6 lg:grid-cols-4">
+        <section className="lg:col-span-2">
+          <TwoFactorCard
+            status={status}
+            setupStep={setupStep}
+            actionLoading={actionLoading}
+            onSetupTOTP={handleSetupTOTP}
+            onShowDisable={() => setShowDisable(true)}
+          />
+        </section>
 
-      {setupStep === 'setup' && totpData && (
-        <TotpSetupFlow
-          totpData={totpData}
-          verifyCode={verifyCode}
-          actionLoading={actionLoading}
-          copiedKey={copiedKey}
-          onCopy={copyToClipboard}
-          onVerifyCodeChange={setVerifyCode}
-          onVerifyAndEnable={handleVerifyAndEnable}
-          onCancel={resetSetupFlow}
-        />
-      )}
+        <section className="lg:col-span-2">
+          <AccountSecurityInfo status={status} />
+        </section>
 
-      {setupStep === 'backup' && backupCodes.length > 0 && (
-        <BackupCodesPanel
-          backupCodes={backupCodes}
-          copiedKey={copiedKey}
-          onCopy={copyToClipboard}
-          onDone={resetSetupFlow}
-        />
-      )}
+        {setupStep === 'setup' && totpData && (
+          <section className="lg:col-span-4">
+            <TotpSetupFlow
+              totpData={totpData}
+              verifyCode={verifyCode}
+              actionLoading={actionLoading}
+              copiedKey={copiedKey}
+              onCopy={copyToClipboard}
+              onVerifyCodeChange={setVerifyCode}
+              onVerifyAndEnable={handleVerifyAndEnable}
+              onCancel={resetSetupFlow}
+            />
+          </section>
+        )}
+
+        {setupStep === 'backup' && backupCodes.length > 0 && (
+          <section className="lg:col-span-4">
+            <BackupCodesPanel
+              backupCodes={backupCodes}
+              copiedKey={copiedKey}
+              onCopy={copyToClipboard}
+              onDone={resetSetupFlow}
+            />
+          </section>
+        )}
+
+        <section className="lg:col-span-2">
+          <ChangePasswordCard
+            passwords={passwords}
+            visiblePasswordFields={visiblePasswordFields}
+            passwordChecks={passwordChecks}
+            newPasswordsMatch={newPasswordsMatch}
+            passwordMessage={passwordMessage}
+            isChangingPassword={isChangingPassword}
+            onSubmit={handleChangePassword}
+            onPasswordsChange={setPasswords}
+            onToggleVisibility={togglePasswordVisibility}
+          />
+        </section>
+
+        <section className="lg:col-span-2">
+          <ActiveSessionsCard
+            sessions={sessions}
+            sessionsLoading={sessionsLoading}
+            sessionActionId={sessionActionId}
+            onRevokeSession={handleRevokeSession}
+            onRevokeAllSessions={handleRevokeAllSessions}
+          />
+        </section>
+      </div>
 
       {showDisable && (
         <DisableTwoFactorModal
@@ -397,28 +433,6 @@ export default function SecurityPage() {
           onConfirm={handleDisable2FA}
         />
       )}
-
-      <AccountSecurityInfo status={status} />
-
-      <ChangePasswordCard
-        passwords={passwords}
-        visiblePasswordFields={visiblePasswordFields}
-        passwordChecks={passwordChecks}
-        newPasswordsMatch={newPasswordsMatch}
-        passwordMessage={passwordMessage}
-        isChangingPassword={isChangingPassword}
-        onSubmit={handleChangePassword}
-        onPasswordsChange={setPasswords}
-        onToggleVisibility={togglePasswordVisibility}
-      />
-
-      <ActiveSessionsCard
-        sessions={sessions}
-        sessionsLoading={sessionsLoading}
-        sessionActionId={sessionActionId}
-        onRevokeSession={handleRevokeSession}
-        onRevokeAllSessions={handleRevokeAllSessions}
-      />
     </div>
   );
 }
