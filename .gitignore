@@ -23,10 +23,21 @@ folder-structure*.txt
 
 # Local documentation drafts
 docs/*
-!docs/DEPLOYMENT.md
+DEPLOYMENT.md
 
 # Local EA source versions
+EA's/
 EA's/*.mq5
+EA's/*.mq4
+
+# Private MT5 EA source files
+mt5-private/
+*.mq5
+*.mq4
+*.mqh
+
+SignalReceiverEA.mq5
+SignalSenderEA.mq5
 
 # IDE and OS files
 .idea/
@@ -64,7 +75,5 @@ debug-login-frame-*.png
 
 # Windows reserved names
 nul
-
-
 
 repo-tree.txt

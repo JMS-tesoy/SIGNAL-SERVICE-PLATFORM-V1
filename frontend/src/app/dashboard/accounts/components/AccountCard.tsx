@@ -2,6 +2,8 @@ import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   AlertCircle,
+  CalendarClock,
+  CheckCircle2,
   ClipboardCheck,
   Copy,
   Eye,
@@ -14,11 +16,120 @@ import {
   ShieldAlert,
   Trash2,
 } from "lucide-react";
-import { API_BASE_URL } from "../constants";
 import type { GeneratedKey, MT5Account } from "../types";
 import { formatHeartbeat, getHealthState, money } from "../utils";
 import { CopyPill } from "./CopyPill";
 import { DetailItem } from "./DetailItem";
+
+
+type AccountWithLicense = MT5Account & {
+  status?: string | null;
+  licenseStatus?: string | null;
+  subscriptionStatus?: string | null;
+  plan?: string | null;
+  planName?: string | null;
+  trialEndsAt?: string | null;
+  expiresAt?: string | null;
+  licenseExpiresAt?: string | null;
+  subscriptionEndsAt?: string | null;
+  currentPeriodEnd?: string | null;
+};
+
+const formatDate = (value?: string | null) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return new Intl.DateTimeFormat("en", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  }).format(date);
+};
+
+const getDaysRemaining = (value?: string | null) => {
+  if (!value) return null;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+
+  return Math.ceil((date.getTime() - Date.now()) / 86_400_000);
+};
+
+const toTitleCase = (value?: string | null) => {
+  if (!value) return null;
+
+  return value
+    .toLowerCase()
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const getLicenseValidity = (account: AccountWithLicense, eaTypeLabel: string) => {
+  const subscriptionStatus = account.subscriptionStatus?.toUpperCase() ?? null;
+  const licenseStatus = account.licenseStatus?.toUpperCase() ?? account.status?.toUpperCase() ?? "ACTIVE";
+  const planLabel = account.planName || account.plan || toTitleCase(subscriptionStatus) || "Plan";
+  const expiryDate =
+    account.trialEndsAt ||
+    account.licenseExpiresAt ||
+    account.subscriptionEndsAt ||
+    account.currentPeriodEnd ||
+    account.expiresAt ||
+    null;
+  const formattedExpiry = formatDate(expiryDate);
+  const daysRemaining = getDaysRemaining(expiryDate);
+
+  if (["REVOKED", "BLOCKED", "SUSPENDED"].includes(licenseStatus)) {
+    return {
+      label: `${eaTypeLabel} license ${toTitleCase(licenseStatus)}`,
+      duration: "EA access is disabled until this account is restored by an administrator.",
+      tone: "border-accent-red/20 bg-accent-red/10 text-accent-red",
+    };
+  }
+
+  if (["EXPIRED", "CANCELED", "CANCELLED", "PAST_DUE"].includes(subscriptionStatus || licenseStatus)) {
+    return {
+      label: `${eaTypeLabel} license not active`,
+      duration: "EA access is blocked until the subscription or license is reactivated.",
+      tone: "border-accent-red/20 bg-accent-red/10 text-accent-red",
+    };
+  }
+
+  if (subscriptionStatus === "TRIAL") {
+    return {
+      label: `${eaTypeLabel} trial active`,
+      duration:
+        formattedExpiry && daysRemaining !== null
+          ? daysRemaining >= 0
+            ? `Trial ends on ${formattedExpiry} (${daysRemaining} day${daysRemaining === 1 ? "" : "s"} remaining).`
+            : `Trial ended on ${formattedExpiry}.`
+          : "Trial access is active. No trial end date is currently shown.",
+      tone: "border-primary/20 bg-primary/10 text-primary",
+    };
+  }
+
+  if (subscriptionStatus === "FREE" || subscriptionStatus === "NONE" || planLabel.toLowerCase().includes("free")) {
+    return {
+      label: `${eaTypeLabel} free access`,
+      duration: formattedExpiry
+        ? `Free access is valid until ${formattedExpiry}.`
+        : "Free access is active. No expiration date is currently shown.",
+      tone: "border-accent-yellow/20 bg-accent-yellow/10 text-accent-yellow",
+    };
+  }
+
+  return {
+    label: `${eaTypeLabel} license active`,
+    duration:
+      formattedExpiry && daysRemaining !== null
+        ? daysRemaining >= 0
+          ? `Valid until ${formattedExpiry} (${daysRemaining} day${daysRemaining === 1 ? "" : "s"} remaining).`
+          : `Expired on ${formattedExpiry}.`
+        : "Active license. Duration is not currently available from the account data.",
+    tone: "border-accent-green/20 bg-accent-green/10 text-accent-green",
+  };
+};
 
 type AccountCardProps = {
   account: MT5Account;
@@ -45,9 +156,13 @@ export function AccountCard({
   const health = getHealthState(account);
   const HealthIcon = health.icon;
   const keyForThisAccount = generatedKey?.id === account.id ? generatedKey.key : null;
-  const configEndpoint = `${API_BASE_URL}/api/signals`;
-  const pendingEndpoint = `${API_BASE_URL}/api/signals/pending?account_id=${account.accountId}`;
-
+  const isMasterAccount = account.accountType === "MASTER";
+  const eaTypeLabel = isMasterAccount ? "Sender EA" : "Receiver EA";
+  const licenseValidity = getLicenseValidity(account as AccountWithLicense, eaTypeLabel);
+  const mt5WebRequestUrl = "https://api.tesoy.online";
+  const cloudProtectEndpoint = isMasterAccount
+    ? `${mt5WebRequestUrl}/api/mt5/license/verify`
+    : `${mt5WebRequestUrl}/api/mt5/signals/pull`;
   return (
     <motion.div layout className="card flex flex-col gap-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -100,7 +215,7 @@ export function AccountCard({
             {account.hasApiKey && (
               <button
                 onClick={() => onRevoke(account)}
-                title="Revoke API Key"
+                aria-label="Revoke API key"
                 disabled={actionLoading === account.id}
                 className="p-2 hover:bg-accent-yellow/10 rounded-lg text-foreground-muted hover:text-accent-yellow transition active:scale-95"
               >
@@ -125,12 +240,30 @@ export function AccountCard({
         <DetailItem icon={Key} label="API key" value={account.hasApiKey ? "Generated" : "Not generated"} />
       </div>
 
+      <div className={`rounded-xl border px-4 py-3 ${licenseValidity.tone}`}>
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-background/50">
+            <CalendarClock className="h-4 w-4" />
+          </div>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-sm font-semibold">EA license validity</p>
+              <span className="inline-flex items-center gap-1 rounded-full bg-background/50 px-2 py-0.5 text-xs font-medium">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                {licenseValidity.label}
+              </span>
+            </div>
+            <p className="mt-1 text-xs leading-5">{licenseValidity.duration}</p>
+          </div>
+        </div>
+      </div>
+
       <div className="rounded-xl border border-border bg-background/50 p-4">
         <div className="mb-3 flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold">EA configuration</p>
+            <p className="text-sm font-semibold">{eaTypeLabel} configuration</p>
             <p className="text-xs text-foreground-muted">
-              Copy these values into your {account.accountType === "MASTER" ? "Sender" : "Receiver"} EA.
+              Copy these values into MT5. The EA connects through Cloud Protect using your production API domain.
             </p>
           </div>
           {!account.hasApiKey && !keyForThisAccount && (
@@ -140,15 +273,20 @@ export function AccountCard({
           )}
         </div>
         <div className="grid gap-2">
-          <CopyPill label="account_id" value={account.accountId} onCopy={onCopy} copiedValue={copiedValue} />
+          <CopyPill label="MT5 id" value={account.accountId} onCopy={onCopy} copiedValue={copiedValue} />
+          <CopyPill label="Broker" value={account.broker || "Not set"} onCopy={onCopy} copiedValue={copiedValue} />
+          <CopyPill label="Server" value={account.server || "Not set"} onCopy={onCopy} copiedValue={copiedValue} />
+          <CopyPill label="WebRequest URL" value={mt5WebRequestUrl} onCopy={onCopy} copiedValue={copiedValue} />
           <CopyPill
-            label={account.accountType === "MASTER" ? "Signals URL" : "Pending URL"}
-            value={account.accountType === "MASTER" ? configEndpoint : pendingEndpoint}
+            label={isMasterAccount ? "License verify URL" : "Signal pull URL"}
+            value={cloudProtectEndpoint}
             onCopy={onCopy}
             copiedValue={copiedValue}
           />
-          <CopyPill label="WebRequest URL" value={API_BASE_URL} onCopy={onCopy} copiedValue={copiedValue} />
         </div>
+        <p className="mt-3 text-xs leading-5 text-foreground-muted">
+          In MT5, add only <span className="font-mono text-foreground">{mt5WebRequestUrl}</span> under Tools → Options → Expert Advisors → Allow WebRequest for listed URL.
+        </p>
       </div>
 
       {getHealthState(account).key === "NEVER" && (

@@ -7,6 +7,7 @@ const eaVersionSchema = z.string().trim().min(1).max(30);
 const terminalFingerprintSchema = z.string().trim().min(8).max(255);
 const optionalDeviceIdSchema = z.string().trim().max(255).optional();
 const optionalTerminalIdSchema = z.string().trim().max(255).optional();
+const accountTradeModeSchema = z.enum(["DEMO", "LIVE", "CONTEST", "UNKNOWN"]).default("UNKNOWN");
 
 export const mt5LicenseVerifySchema = z.object({
   accountId: accountIdSchema,
@@ -17,6 +18,7 @@ export const mt5LicenseVerifySchema = z.object({
   deviceId: optionalDeviceIdSchema,
   terminalId: optionalTerminalIdSchema,
   terminalFingerprint: terminalFingerprintSchema,
+  accountTradeMode: accountTradeModeSchema,
 });
 
 export const mt5HeartbeatSchema = z.object({
@@ -28,6 +30,7 @@ export const mt5HeartbeatSchema = z.object({
   deviceId: optionalDeviceIdSchema,
   terminalId: optionalTerminalIdSchema,
   terminalFingerprint: terminalFingerprintSchema,
+  accountTradeMode: accountTradeModeSchema,
   balance: z.number().finite().optional(),
   equity: z.number().finite().optional(),
   profit: z.number().finite().optional(),
@@ -40,6 +43,7 @@ export const mt5SignalsPullSchema = z.object({
   server: serverSchema,
   eaVersion: eaVersionSchema,
   terminalFingerprint: terminalFingerprintSchema,
+  accountTradeMode: accountTradeModeSchema,
   lastSignalTimestamp: z.string().datetime().optional(),
 });
 
@@ -50,6 +54,7 @@ export const mt5TradeReportSchema = z.object({
   broker: brokerSchema,
   server: serverSchema,
   terminalFingerprint: terminalFingerprintSchema,
+  accountTradeMode: accountTradeModeSchema,
   ticket: z.union([z.string().trim().min(1), z.number().int().positive()]).optional(),
   symbol: z.string().trim().min(1).max(30),
   orderType: z.enum(["BUY", "SELL"]),

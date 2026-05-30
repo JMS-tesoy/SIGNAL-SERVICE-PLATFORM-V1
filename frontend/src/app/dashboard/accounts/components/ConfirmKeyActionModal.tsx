@@ -9,6 +9,11 @@ type ConfirmKeyActionModalProps = {
 };
 
 export function ConfirmKeyActionModal({ action, onCancel, onConfirm }: ConfirmKeyActionModalProps) {
+  const revokeMessage =
+    action?.account.accountType === "MASTER"
+      ? "Revoking this API key will disconnect this MT5 account. The Sender EA will stop sending trades to connected Receiver accounts."
+      : "Revoking this API key will disconnect this MT5 account. The Receiver EA will stop copying trades from the Master Trader.";
+
   return (
     <AnimatePresence>
       {action && (
@@ -36,7 +41,7 @@ export function ConfirmKeyActionModal({ action, onCancel, onConfirm }: ConfirmKe
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-foreground-muted">
                   {action.type === "revoke"
-                    ? "The EA using this key will stop connecting until a new key is generated and copied into MT5."
+                    ? revokeMessage
                     : "The old key will stop working immediately. You must copy the new key into your MT5 EA."}
                 </p>
               </div>

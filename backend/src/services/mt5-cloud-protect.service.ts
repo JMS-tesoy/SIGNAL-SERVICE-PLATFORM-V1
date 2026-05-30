@@ -17,7 +17,8 @@ type Mt5AuthContext = {
   subscription: SubscriptionWithTier | null;
 };
 
-const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["ACTIVE", "TRIALING"]);
+const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["ACTIVE", "TRIAL", "TRIALING"]);
+const TRIAL_SUBSCRIPTION_STATUSES = new Set(["TRIAL", "TRIALING"]);
 const STALE_SESSION_MS = 2 * 60 * 1000;
 
 function isSessionStale(lastHeartbeatAt: Date | null | undefined, now = new Date()) {
@@ -138,6 +139,30 @@ function validateBaseAccount(
   return null;
 }
 
+function enforceTrialDemoReceiverOnly(
+  subscription: SubscriptionWithTier | null,
+  input: {
+    eaType: MT5EaType;
+    accountTradeMode?: string | null;
+  }
+) {
+  const subscriptionStatus = subscription?.status?.toUpperCase();
+
+  if (!subscriptionStatus || !TRIAL_SUBSCRIPTION_STATUSES.has(subscriptionStatus)) {
+    return null;
+  }
+
+  if (input.eaType !== "RECEIVER") {
+    return blocked("BLOCK_TRIAL_RECEIVER_ONLY", "Trial access is limited to Receiver EA only.");
+  }
+
+  if ((input.accountTradeMode ?? "UNKNOWN").toUpperCase() !== "DEMO") {
+    return blocked("BLOCK_TRIAL_DEMO_ONLY", "Trial access is limited to MT5 demo accounts only.");
+  }
+
+  return null;
+}
+
 function validateEaPermission(mt5Account: MT5Account, eaType: MT5EaType) {
   if (eaType === "SENDER") {
     if (mt5Account.accountType !== "MASTER" || !mt5Account.allowSignalSend) {
@@ -167,6 +192,12 @@ export async function verifyMt5License(rawApiKey: string | null, input: Mt5Licen
 
   const baseError = validateBaseAccount(context, input);
   if (baseError) return baseError;
+
+  const trialError = enforceTrialDemoReceiverOnly(context.subscription, {
+    eaType: input.eaType,
+    accountTradeMode: input.accountTradeMode,
+  });
+  if (trialError) return trialError;
 
   const permissionError = validateEaPermission(context.mt5Account, input.eaType);
   if (permissionError) return permissionError;
@@ -273,6 +304,12 @@ export async function recordMt5Heartbeat(rawApiKey: string | null, input: Mt5Hea
     return { ...blocked("BLOCK_SESSION_REVOKED", "Session is blocked"), ok: false, continue: false };
   }
 
+  const trialError = enforceTrialDemoReceiverOnly(context.subscription, {
+    eaType: session.eaType,
+    accountTradeMode: input.accountTradeMode,
+  });
+  if (trialError) return { ...trialError, ok: false, continue: false };
+
   const now = new Date();
 
   await prisma.mT5LicenseSession.update({
@@ -323,6 +360,12 @@ export async function pullMt5Signals(rawApiKey: string | null, input: Mt5Signals
 
   const permissionError = validateEaPermission(context.mt5Account, "RECEIVER");
   if (permissionError) return { ...permissionError, signals: [] };
+
+  const trialError = enforceTrialDemoReceiverOnly(context.subscription, {
+    eaType: "RECEIVER",
+    accountTradeMode: input.accountTradeMode,
+  });
+  if (trialError) return { ...trialError, signals: [] };
 
   const session = await prisma.mT5LicenseSession.findFirst({
     where: {
@@ -436,6 +479,12 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
   });
 
   if (baseError) return { ...baseError, ok: false };
+
+  const trialError = enforceTrialDemoReceiverOnly(context.subscription, {
+    eaType: "RECEIVER",
+    accountTradeMode: input.accountTradeMode,
+  });
+  if (trialError) return { ...trialError, ok: false };
 
   const permissionError = validateEaPermission(context.mt5Account, "RECEIVER");
   if (permissionError) return { ...permissionError, ok: false };
