@@ -465,6 +465,8 @@ export default function MT5AccountManager() {
                   {account.hasApiKey && (
                     <button
                       type="button"
+                      title="Revoking this API key will disconnect this MT5 account. The Receiver EA will stop copying trades from the Master Trader."
+                      aria-label="Revoking this API key will disconnect this MT5 account. The Receiver EA will stop copying trades from the Master Trader."
                       onClick={() => handleRevokeKey(account.id)}
                       disabled={keyActionId === account.id}
                       className="rounded border border-red-500/50 px-4 py-2 text-sm font-medium text-red-300 transition hover:bg-red-950 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
