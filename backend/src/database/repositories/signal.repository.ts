@@ -193,6 +193,7 @@ export function createSignal(data: {
   sl: number | null;
   tp: number | null;
   masterTicket: bigint | null;
+  masterPositionId: bigint | null;
   magic: number | null;
   comment: string | null;
   expiresAt: Date;
@@ -428,3 +429,4 @@ export async function createPendingExecutionsForActiveSubscriberSlaveAccounts(
     skipDuplicates: true,
   });
 }
+

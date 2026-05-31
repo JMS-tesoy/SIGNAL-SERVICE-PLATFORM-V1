@@ -19,6 +19,7 @@ interface IncomingSignal {
   sl?: number;
   tp?: number;
   ticket?: number;
+  masterPositionId?: number;
   magic?: number;
   comment?: string;
   accountId: string;
@@ -55,6 +56,7 @@ export async function receiveSignal(
     }
 
     const masterTicket = signal.ticket ? BigInt(signal.ticket) : null;
+    const masterPositionId = signal.masterPositionId ? BigInt(signal.masterPositionId) : null;
     const action = signal.action.toUpperCase() as SignalAction;
     const sl = signal.sl || null;
     const tp = signal.tp || null;
@@ -108,6 +110,7 @@ export async function receiveSignal(
       sl,
       tp,
       masterTicket,
+      masterPositionId,
       magic: signal.magic || null,
       comment: signal.comment || null,
       expiresAt: new Date(Date.now() + 120 * 1000), // 2 minutes expiry
@@ -173,6 +176,7 @@ export async function getPendingSignals(
       sl: exec.signal.sl ? Number(exec.signal.sl) : 0,
       tp: exec.signal.tp ? Number(exec.signal.tp) : 0,
       ticket: exec.signal.masterTicket ? Number(exec.signal.masterTicket) : 0,
+      masterPositionId: exec.signal.masterPositionId ? Number(exec.signal.masterPositionId) : 0,
       magic: exec.signal.magic || 0,
       timestamp_utc: exec.signal.createdAt.toISOString(),
     }));
@@ -541,3 +545,5 @@ export async function getPerformanceData(
 export async function cleanupExpiredSignals(): Promise<number> {
   return signalRepository.expirePendingSignals();
 }
+
+

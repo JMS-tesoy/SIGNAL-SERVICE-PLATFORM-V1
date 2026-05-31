@@ -448,6 +448,8 @@ export async function pullMt5Signals(rawApiKey: string | null, input: Mt5Signals
       orderType: execution.signal.type,
       lotSize: Number(execution.signal.volume),
       entryPrice: Number(execution.signal.price),
+      ticket: execution.signal.masterTicket ? Number(execution.signal.masterTicket) : 0,
+      masterPositionId: execution.signal.masterPositionId ? Number(execution.signal.masterPositionId) : 0,
       sl: execution.signal.sl ? Number(execution.signal.sl) : null,
       tp: execution.signal.tp ? Number(execution.signal.tp) : null,
       expiresAt: execution.signal.expiresAt.toISOString(),
@@ -602,3 +604,6 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
     message: "Trade report received",
   };
 }
+
+
+

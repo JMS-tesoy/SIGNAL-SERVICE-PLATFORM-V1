@@ -58,6 +58,7 @@ router.post('/', authenticate, asyncHandler(async (req: Request, res: Response) 
       sl: data?.sl,
       tp: data?.tp,
       ticket: data?.ticket,
+      masterPositionId: data?.masterPositionId,
       magic: data?.magic,
       comment: data?.comment,
       accountId,
@@ -239,3 +240,9 @@ router.get('/performance', authenticate, asyncHandler(async (req: Request, res: 
 }));
 
 export default router;
+
+
+
+
+
+

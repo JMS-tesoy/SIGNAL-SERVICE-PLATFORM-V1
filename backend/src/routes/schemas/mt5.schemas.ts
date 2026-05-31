@@ -55,7 +55,8 @@ export const mt5TradeReportSchema = z.object({
   server: serverSchema,
   terminalFingerprint: terminalFingerprintSchema,
   accountTradeMode: accountTradeModeSchema,
-  ticket: z.union([z.string().trim().min(1), z.number().int().positive()]).optional(),
+  ticket: z.union([z.string(), z.number()]).optional(),
+  masterPositionId: z.union([z.string(), z.number()]).optional(),
   symbol: z.string().trim().min(1).max(30),
   orderType: z.enum(["BUY", "SELL"]),
   lotSize: z.number().positive(),
@@ -73,3 +74,4 @@ export type Mt5LicenseVerifyInput = z.infer<typeof mt5LicenseVerifySchema>;
 export type Mt5HeartbeatInput = z.infer<typeof mt5HeartbeatSchema>;
 export type Mt5SignalsPullInput = z.infer<typeof mt5SignalsPullSchema>;
 export type Mt5TradeReportInput = z.infer<typeof mt5TradeReportSchema>;
+

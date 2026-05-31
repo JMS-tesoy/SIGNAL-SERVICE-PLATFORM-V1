@@ -181,7 +181,8 @@ model Signal {
   price        Decimal           @db.Decimal(15, 5)
   sl           Decimal?          @db.Decimal(15, 5)
   tp           Decimal?          @db.Decimal(15, 5)
-  masterTicket BigInt?
+  masterTicket     BigInt?
+  masterPositionId BigInt?
   comment      String?
   magic        Int?
   status       SignalStatus      @default(PENDING)
@@ -195,6 +196,7 @@ model Signal {
   @@index([providerId])
   @@index([status])
   @@index([symbol])
+  @@index([masterPositionId])
 }
 
 model SignalExecution {
@@ -411,3 +413,4 @@ enum UserStatus {
   BANNED
   PENDING_VERIFICATION
 }
+
