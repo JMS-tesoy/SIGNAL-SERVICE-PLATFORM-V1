@@ -25,41 +25,36 @@ model AccountSnapshot {
 }
 
 model MT5Account {
-  id            String           @id @default(cuid())
-  userId        String
-  accountId     String
-  accountType   MT5AccountType
-  broker        String?
-  server        String?
-  status        MT5AccountStatus @default(ACTIVE)
-  isConnected   Boolean          @default(false)
-  lastHeartbeat DateTime?
-  balance       Decimal          @default(0) @db.Decimal(15, 2)
-  equity        Decimal          @default(0) @db.Decimal(15, 2)
-  profit        Decimal          @default(0) @db.Decimal(15, 2)
-
-  apiKey           String?   @unique
-  apiKeyPrefix     String?
-  apiKeyRevokedAt  DateTime?
-  apiKeyLastUsedAt DateTime?
-
-  minEaVersion       String  @default("1.0.0")
-  maxDevices         Int     @default(1)
-  allowSignalSend    Boolean @default(false)
-  allowSignalReceive Boolean @default(false)
-
+  id                     String              @id @default(cuid())
+  userId                 String
+  accountId              String
+  accountType            MT5AccountType
+  broker                 String?
+  server                 String?
+  isConnected            Boolean             @default(false)
+  lastHeartbeat          DateTime?
+  balance                Decimal             @default(0) @db.Decimal(15, 2)
+  equity                 Decimal             @default(0) @db.Decimal(15, 2)
+  profit                 Decimal             @default(0) @db.Decimal(15, 2)
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  apiKey                 String?             @unique
+  allowSignalReceive     Boolean             @default(false)
+  allowSignalSend        Boolean             @default(false)
   allowedMasterAccountId String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-
-  accountSnapshots AccountSnapshot[]
-  user             User                @relation(fields: [userId], references: [id], onDelete: Cascade)
-  signals          Signal[]
-  executions       SignalExecution[]
-  licenseSessions  MT5LicenseSession[]
-
-  allowedMasterAccount MT5Account?  @relation("AllowedMasterAccount", fields: [allowedMasterAccountId], references: [id])
-  allowedFollowers     MT5Account[] @relation("AllowedMasterAccount")
+  apiKeyLastUsedAt       DateTime?
+  apiKeyPrefix           String?
+  apiKeyRevokedAt        DateTime?
+  maxDevices             Int                 @default(1)
+  minEaVersion           String              @default("1.0.0")
+  status                 MT5AccountStatus    @default(ACTIVE)
+  accountSnapshots       AccountSnapshot[]
+  allowedMasterAccount   MT5Account?         @relation("AllowedMasterAccount", fields: [allowedMasterAccountId], references: [id])
+  allowedFollowers       MT5Account[]        @relation("AllowedMasterAccount")
+  user                   User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  licenseSessions        MT5LicenseSession[]
+  signals                Signal[]
+  executions             SignalExecution[]
 
   @@unique([userId, accountId])
   @@index([accountId])
@@ -88,9 +83,8 @@ model MT5LicenseSession {
   lastHeartbeatAt     DateTime?
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
-
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mt5Account MT5Account @relation(fields: [mt5AccountId], references: [id], onDelete: Cascade)
+  mt5Account          MT5Account       @relation(fields: [mt5AccountId], references: [id], onDelete: Cascade)
+  user                User             @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([mt5AccountId, eaType, terminalFingerprint])
   @@index([userId])

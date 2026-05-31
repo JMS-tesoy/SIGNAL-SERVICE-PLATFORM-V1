@@ -217,9 +217,9 @@ export async function verifyMt5License(rawApiKey: string | null, input: Mt5Licen
     },
   });
 
-  if (activeSessions.length >= context.mt5Account.maxDevices) {
-    return blocked("BLOCK_DUPLICATE_DEVICE", "Device/session limit reached");
-  }
+  if (activeSessions.length > 0) {
+  return blocked("BLOCK_DUPLICATE_DEVICE", "Device/session limit reached");
+}
 
   const session = await prisma.mT5LicenseSession.upsert({
     where: {
