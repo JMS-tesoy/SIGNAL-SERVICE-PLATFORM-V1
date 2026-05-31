@@ -220,6 +220,44 @@ export function findSignalByMasterTicket(input: {
   });
 }
 
+export function findSignalByMasterTicketAndAction(input: {
+  providerId: string;
+  mt5AccountId: string;
+  masterTicket: bigint;
+  action: SignalAction;
+}) {
+  return prisma.signal.findFirst({
+    where: {
+      providerId: input.providerId,
+      mt5AccountId: input.mt5AccountId,
+      masterTicket: input.masterTicket,
+      action: input.action,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export function findLatestModifySignalByMasterTicket(input: {
+  providerId: string;
+  mt5AccountId: string;
+  masterTicket: bigint;
+}) {
+  return prisma.signal.findFirst({
+    where: {
+      providerId: input.providerId,
+      mt5AccountId: input.mt5AccountId,
+      masterTicket: input.masterTicket,
+      action: "MODIFY",
+    },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      sl: true,
+      tp: true,
+    },
+  });
+}
+
 export async function reconcileSignalStatusFromExecutions(signalId: string) {
   const executions = await prisma.signalExecution.findMany({
     where: { signalId },

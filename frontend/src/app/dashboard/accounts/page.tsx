@@ -110,8 +110,13 @@ export default function AccountsPage() {
     (newAccount.accountEnvironment !== "LIVE" || canUseLiveAccounts);
 
   const fetchAccounts = async () => {
-    if (!accessToken) return;
+    if (!accessToken) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
+    setMessage({ type: "", text: "" });
 
     try {
       const result = await userApi.getMT5Accounts(accessToken);
@@ -130,6 +135,11 @@ export default function AccountsPage() {
           });
 
           return next;
+        });
+      } else {
+        setMessage({
+          type: "error",
+          text: result.error || "Failed to load MT5 accounts.",
         });
       }
     } catch {

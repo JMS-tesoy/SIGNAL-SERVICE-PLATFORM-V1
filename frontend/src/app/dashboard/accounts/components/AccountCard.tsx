@@ -177,6 +177,12 @@ export function AccountCard({
     : `${mt5WebRequestUrl}/api/mt5/signals/pull`;
   const selectedMasterId =
     selectedMasterIds[account.id] ?? account.allowedMasterAccountId ?? "";
+  const hasSavedMasterAssignment =
+    !isMasterAccount &&
+    Boolean(account.assignedMaster) &&
+    Boolean(account.allowedMasterAccountId) &&
+    selectedMasterId === account.allowedMasterAccountId;
+  const isSavingAssignment = actionLoading === `assign-${account.id}`;
   const assignedMasterLabel = account.assignedMaster
     ? `${account.assignedMaster.broker || "Unknown broker"} ${account.assignedMaster.accountId}`
     : "None";
@@ -323,7 +329,7 @@ export function AccountCard({
                   id={`master-assignment-${account.id}`}
                   value={selectedMasterId}
                   onChange={(event) => onMasterSelectionChange(account.id, event.target.value)}
-                  className="input"
+                  className={`input ${hasSavedMasterAssignment ? "font-semibold text-primary" : ""}`}
                 >
                   <option value="">Select a Master account</option>
                   {compatibleMasterOptions.map((master) => (
@@ -341,11 +347,14 @@ export function AccountCard({
                 <button
                   type="button"
                   onClick={() => onAssignMaster(account.id)}
-                  disabled={actionLoading === `assign-${account.id}` || !selectedMasterId}
-                  className="btn-primary flex h-11 w-full items-center justify-center gap-2 px-4 lg:w-auto"
+                  disabled={isSavingAssignment || !selectedMasterId}
+                  className="btn-primary flex h-11 w-full min-w-[10.5rem] items-center justify-center gap-2 px-4 lg:w-[10.5rem]"
                 >
-                  {actionLoading === `assign-${account.id}` ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
+                  {isSavingAssignment ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
                   ) : (
                     "Save assignment"
                   )}

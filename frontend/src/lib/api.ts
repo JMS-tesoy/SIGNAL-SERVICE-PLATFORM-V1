@@ -2,6 +2,8 @@
 // API CLIENT - HTTP Request Utilities
 // =============================================================================
 
+import { useAuthStore } from './store';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 // =============================================================================
@@ -10,6 +12,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 interface ApiOptions extends RequestInit {
   token?: string | null;
+  skipAuthRefresh?: boolean;
 }
 
 interface ApiResponse<T> {
@@ -50,11 +53,46 @@ function getApiErrorMessage(data: unknown, status: number) {
 // BASE FETCH WRAPPER
 // =============================================================================
 
+let refreshAccessTokenRequest: Promise<string | null> | null = null;
+
+async function refreshStoredAccessToken() {
+  const { refreshToken, setAccessToken, logout } = useAuthStore.getState();
+
+  if (!refreshToken) {
+    return null;
+  }
+
+  if (!refreshAccessTokenRequest) {
+    refreshAccessTokenRequest = fetch(`${API_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    })
+      .then(async (response) => {
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok || !data?.accessToken) {
+          logout();
+          return null;
+        }
+
+        setAccessToken(data.accessToken);
+        return data.accessToken as string;
+      })
+      .catch(() => null)
+      .finally(() => {
+        refreshAccessTokenRequest = null;
+      });
+  }
+
+  return refreshAccessTokenRequest;
+}
+
 async function apiFetch<T>(
   endpoint: string,
   options: ApiOptions = {}
 ): Promise<ApiResponse<T>> {
-  const { token, ...fetchOptions } = options;
+  const { token, skipAuthRefresh, ...fetchOptions } = options;
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
@@ -72,6 +110,18 @@ async function apiFetch<T>(
     });
 
     const data = await response.json().catch(() => null);
+
+    if (response.status === 401 && token && !skipAuthRefresh) {
+      const refreshedToken = await refreshStoredAccessToken();
+
+      if (refreshedToken) {
+        return apiFetch<T>(endpoint, {
+          ...options,
+          token: refreshedToken,
+          skipAuthRefresh: true,
+        });
+      }
+    }
 
     if (!response.ok) {
       return {

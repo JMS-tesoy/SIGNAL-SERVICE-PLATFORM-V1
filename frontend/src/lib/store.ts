@@ -47,6 +47,7 @@ interface AuthState {
   // Actions
   setUser: (user: User | null) => void;
   setSubscription: (subscription: Subscription | null) => void;
+  setAccessToken: (accessToken: string) => void;
   setTokens: (accessToken: string, refreshToken: string) => void;
   setLoading: (loading: boolean) => void;
   logout: () => void;
@@ -72,6 +73,12 @@ export const useAuthStore = create<AuthState>()(
       })),
 
       setSubscription: (subscription) => set({ subscription }),
+
+      setAccessToken: (accessToken) => set({
+        accessToken,
+        isAuthenticated: true,
+        isLoading: false,
+      }),
 
       setTokens: (accessToken, refreshToken) => set({ 
         accessToken, 

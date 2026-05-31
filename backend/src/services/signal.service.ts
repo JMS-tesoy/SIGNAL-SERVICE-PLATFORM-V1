@@ -55,33 +55,58 @@ export async function receiveSignal(
     }
 
     const masterTicket = signal.ticket ? BigInt(signal.ticket) : null;
+    const action = signal.action.toUpperCase() as SignalAction;
+    const sl = signal.sl || null;
+    const tp = signal.tp || null;
 
     if (masterTicket) {
-      const existingSignal = await signalRepository.findSignalByMasterTicket({
-        providerId,
-        mt5AccountId: mt5Account.id,
-        masterTicket,
-      });
+      if (action === "MODIFY") {
+        const latestModifySignal = await signalRepository.findLatestModifySignalByMasterTicket({
+          providerId,
+          mt5AccountId: mt5Account.id,
+          masterTicket,
+        });
 
-      if (existingSignal) {
-        return {
-          success: true,
-          message: 'Signal already received',
-          signalId: existingSignal.id,
-        };
+        const incomingSl = normalizeOptionalPrice(sl);
+        const incomingTp = normalizeOptionalPrice(tp);
+        const storedSl = normalizeStoredPrice(latestModifySignal?.sl);
+        const storedTp = normalizeStoredPrice(latestModifySignal?.tp);
+
+        if (latestModifySignal && incomingSl === storedSl && incomingTp === storedTp) {
+          return {
+            success: true,
+            message: 'Signal already received',
+            signalId: latestModifySignal.id,
+          };
+        }
+      } else {
+        const existingSignal = await signalRepository.findSignalByMasterTicketAndAction({
+          providerId,
+          mt5AccountId: mt5Account.id,
+          masterTicket,
+          action,
+        });
+
+        if (existingSignal) {
+          return {
+            success: true,
+            message: 'Signal already received',
+            signalId: existingSignal.id,
+          };
+        }
       }
     }
 
     const newSignal = await signalRepository.createSignal({
       providerId,
       mt5AccountId: mt5Account.id,
-      action: signal.action.toUpperCase() as SignalAction,
+      action,
       symbol: signal.symbol,
       type: signal.type.toUpperCase() as TradeType,
       volume: signal.volume,
       price: signal.price,
-      sl: signal.sl || null,
-      tp: signal.tp || null,
+      sl,
+      tp,
       masterTicket,
       magic: signal.magic || null,
       comment: signal.comment || null,
@@ -164,6 +189,22 @@ export async function getPendingSignals(
 // =============================================================================
 
 const TERMINAL_STATUSES: ExecutionStatus[] = ['EXECUTED', 'FAILED', 'EXPIRED', 'SKIPPED'];
+
+function normalizeOptionalPrice(value: number | null | undefined) {
+  if (value === null || value === undefined || value === 0) {
+    return null;
+  }
+
+  return value.toFixed(5);
+}
+
+function normalizeStoredPrice(value: Prisma.Decimal | null | undefined) {
+  if (!value || value.isZero()) {
+    return null;
+  }
+
+  return value.toFixed(5);
+}
 
 export async function acknowledgeExecution(
   executionId: string,
