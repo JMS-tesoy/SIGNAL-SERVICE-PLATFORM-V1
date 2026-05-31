@@ -1,5 +1,12 @@
-import type { MT5Account, MT5EaType, Subscription, SubscriptionTier } from "@prisma/client";
+import type {
+  ExecutionStatus,
+  MT5Account,
+  MT5EaType,
+  Subscription,
+  SubscriptionTier,
+} from "@prisma/client";
 import prisma from "../config/database.js";
+import { signalRepository } from "../database/repositories/index.js";
 import { hashMt5ApiKey } from "../utils/api-key.js";
 import type {
   Mt5HeartbeatInput,
@@ -19,6 +26,12 @@ type Mt5AuthContext = {
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["ACTIVE", "TRIAL", "TRIALING"]);
 const TRIAL_SUBSCRIPTION_STATUSES = new Set(["TRIAL", "TRIALING"]);
+const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatus>([
+  "EXECUTED",
+  "FAILED",
+  "SKIPPED",
+  "EXPIRED",
+]);
 const STALE_SESSION_MS = 2 * 60 * 1000;
 
 function isSessionStale(lastHeartbeatAt: Date | null | undefined, now = new Date()) {
@@ -101,6 +114,7 @@ function validateBaseAccount(
     broker?: string;
     server: string;
     eaVersion: string;
+    accountTradeMode?: string | null;
   }
 ) {
   const { mt5Account, subscription } = context;
@@ -132,6 +146,18 @@ function validateBaseAccount(
     return blocked("BLOCK_SERVER_MISMATCH", "Server does not match registered license");
   }
 
+  const incomingTradeMode = (input.accountTradeMode ?? "UNKNOWN").toUpperCase();
+
+  if (
+    (incomingTradeMode === "DEMO" || incomingTradeMode === "LIVE") &&
+    incomingTradeMode !== mt5Account.accountEnvironment
+  ) {
+    return blocked(
+      "BLOCK_ACCOUNT_ENVIRONMENT_MISMATCH",
+      "MT5 account environment does not match the registered account environment"
+    );
+  }
+
   if (compareVersion(input.eaVersion, mt5Account.minEaVersion) < 0) {
     return blocked("BLOCK_OLD_EA_VERSION", "Please update your EA to continue");
   }
@@ -152,12 +178,11 @@ function enforceTrialDemoReceiverOnly(
     return null;
   }
 
-  if (input.eaType !== "RECEIVER") {
-    return blocked("BLOCK_TRIAL_RECEIVER_ONLY", "Trial access is limited to Receiver EA only.");
-  }
-
   if ((input.accountTradeMode ?? "UNKNOWN").toUpperCase() !== "DEMO") {
-    return blocked("BLOCK_TRIAL_DEMO_ONLY", "Trial access is limited to MT5 demo accounts only.");
+    return blocked(
+      "BLOCK_TRIAL_DEMO_ONLY",
+      "Trial accounts can only use demo MT5/MT4 accounts. Upgrade to connect live accounts."
+    );
   }
 
   return null;
@@ -476,6 +501,7 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
     broker: input.broker,
     server: input.server,
     eaVersion: session.eaVersion,
+    accountTradeMode: input.accountTradeMode,
   });
 
   if (baseError) return { ...baseError, ok: false };
@@ -489,20 +515,25 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
   const permissionError = validateEaPermission(context.mt5Account, "RECEIVER");
   if (permissionError) return { ...permissionError, ok: false };
 
-    const executionStatus = input.status === "FAILED" ? "FAILED" : "EXECUTED";
+  const executionStatus: ExecutionStatus = input.status === "FAILED" ? "FAILED" : "EXECUTED";
 
   const matchingExecution = await prisma.signalExecution.findFirst({
     where: {
       signalId: input.signalId,
       userId: context.mt5Account.userId,
       mt5AccountId: context.mt5Account.id,
-      status: "PENDING",
       signal: {
-        status: { in: ["PENDING", "ACTIVE"] },
-        expiresAt: { gt: new Date() },
         ...(context.mt5Account.allowedMasterAccountId
           ? { mt5AccountId: context.mt5Account.allowedMasterAccountId }
           : {}),
+      },
+    },
+    include: {
+      signal: {
+        select: {
+          id: true,
+          status: true,
+        },
       },
     },
   });
@@ -516,14 +547,34 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
     };
   }
 
-  await prisma.signalExecution.update({
+  if (matchingExecution.signal.status === "CANCELED") {
+    return {
+      ok: false,
+      allowed: false,
+      code: "BLOCK_SIGNAL_CANCELED",
+      message: "Signal is canceled",
+    };
+  }
+
+  if (TERMINAL_EXECUTION_STATUSES.has(matchingExecution.status)) {
+    await signalRepository.reconcileSignalStatusFromExecutions(matchingExecution.signalId);
+
+    return {
+      ok: true,
+      message: `Trade report already processed as ${matchingExecution.status}`,
+    };
+  }
+
+  const now = new Date();
+  const result = await prisma.signalExecution.updateMany({
     where: {
       id: matchingExecution.id,
+      status: "PENDING",
     },
     data: {
       status: executionStatus,
-      executedAt: executionStatus === "EXECUTED" ? new Date() : null,
-      acknowledgedAt: new Date(),
+      executedAt: executionStatus === "EXECUTED" ? now : null,
+      acknowledgedAt: now,
       executedVolume: input.lotSize,
       executedPrice: input.openPrice ?? undefined,
       slaveTicket: input.ticket ? BigInt(input.ticket) : undefined,
@@ -537,7 +588,16 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
     },
   });
 
+  await signalRepository.reconcileSignalStatusFromExecutions(matchingExecution.signalId);
+
+  if (result.count === 0) {
     return {
+      ok: true,
+      message: "Trade report already processed",
+    };
+  }
+
+  return {
     ok: true,
     message: "Trade report received",
   };

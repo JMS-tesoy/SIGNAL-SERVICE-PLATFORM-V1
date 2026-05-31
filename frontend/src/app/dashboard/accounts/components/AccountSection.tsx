@@ -5,6 +5,9 @@ type AccountSectionProps = {
   title: string;
   dotClassName: string;
   accounts: MT5Account[];
+  masterOptions: MT5Account[];
+  selectedMasterIds: Record<string, string>;
+  isTrialAccount: boolean;
   generatedKey: GeneratedKey;
   copiedValue: string;
   actionLoading: string | null;
@@ -12,6 +15,8 @@ type AccountSectionProps = {
   onDelete: (accountId: string) => void;
   onGenerate: (account: MT5Account) => void;
   onRevoke: (account: MT5Account) => void;
+  onMasterSelectionChange: (receiverId: string, masterAccountId: string) => void;
+  onAssignMaster: (receiverId: string) => void;
 };
 
 export function AccountSection({ title, dotClassName, accounts, ...cardProps }: AccountSectionProps) {

@@ -29,6 +29,7 @@ model MT5Account {
   userId                 String
   accountId              String
   accountType            MT5AccountType
+  accountEnvironment     MT5AccountEnvironment @default(DEMO)
   broker                 String?
   server                 String?
   isConnected            Boolean             @default(false)
@@ -61,6 +62,7 @@ model MT5Account {
   @@index([apiKey])
   @@index([apiKeyPrefix])
   @@index([status])
+  @@index([accountEnvironment])
   @@index([allowedMasterAccountId])
 }
 
@@ -324,6 +326,11 @@ enum MT5AccountStatus {
 enum MT5AccountType {
   MASTER
   SLAVE
+}
+
+enum MT5AccountEnvironment {
+  DEMO
+  LIVE
 }
 
 enum MT5EaType {

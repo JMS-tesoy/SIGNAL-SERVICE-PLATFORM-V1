@@ -113,6 +113,7 @@ export default function MT5AccountManager() {
     const response = await userApi.addMT5Account(token, {
       accountId,
       accountType: newAccountType,
+      accountEnvironment: "DEMO",
       broker: broker || undefined,
       server,
     });

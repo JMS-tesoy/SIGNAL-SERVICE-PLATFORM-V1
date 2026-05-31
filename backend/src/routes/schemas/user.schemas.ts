@@ -23,6 +23,15 @@ export const changePasswordSchema = z
 export const addMT5AccountSchema = z.object({
   accountId: z.string().trim().min(1, "Account ID is required").max(50),
   accountType: z.enum(["MASTER", "SLAVE"]),
+  accountEnvironment: z.enum(["DEMO", "LIVE"]),
   broker: z.string().trim().max(100).optional(),
   server: z.string().trim().min(1, "Server is required").max(100),
+});
+
+export const assignMT5ReceiverMasterSchema = z.object({
+  masterAccountId: z
+    .string()
+    .trim()
+    .min(1, "Master account is required")
+    .max(100),
 });

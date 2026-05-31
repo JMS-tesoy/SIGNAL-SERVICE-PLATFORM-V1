@@ -1,5 +1,12 @@
-import { ExecutionStatus, Prisma, SignalAction, TradeType } from "@prisma/client";
+import { ExecutionStatus, Prisma, SignalAction, SignalStatus, TradeType } from "@prisma/client";
 import prisma from "../../config/database.js";
+
+const TERMINAL_EXECUTION_STATUSES: ExecutionStatus[] = [
+  "EXECUTED",
+  "FAILED",
+  "SKIPPED",
+  "EXPIRED",
+];
 
 export function findMasterAccountByUserAndAccountId(
   userId: string,
@@ -196,6 +203,55 @@ export function createSignal(data: {
       status: "PENDING",
     },
   });
+}
+
+export function findSignalByMasterTicket(input: {
+  providerId: string;
+  mt5AccountId: string;
+  masterTicket: bigint;
+}) {
+  return prisma.signal.findFirst({
+    where: {
+      providerId: input.providerId,
+      mt5AccountId: input.mt5AccountId,
+      masterTicket: input.masterTicket,
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function reconcileSignalStatusFromExecutions(signalId: string) {
+  const executions = await prisma.signalExecution.findMany({
+    where: { signalId },
+    select: { status: true },
+  });
+
+  if (executions.length === 0) {
+    return null;
+  }
+
+  const allTerminal = executions.every((execution) =>
+    TERMINAL_EXECUTION_STATUSES.includes(execution.status)
+  );
+
+  if (!allTerminal) {
+    return null;
+  }
+
+  const hasExecuted = executions.some((execution) => execution.status === "EXECUTED");
+  const nextStatus: SignalStatus = hasExecuted ? "EXECUTED" : "EXPIRED";
+  const replaceableStatuses: SignalStatus[] =
+    nextStatus === "EXECUTED" ? ["PENDING", "ACTIVE", "EXPIRED"] : ["PENDING", "ACTIVE"];
+
+  await prisma.signal.updateMany({
+    where: {
+      id: signalId,
+      status: { in: replaceableStatuses },
+    },
+    data: { status: nextStatus },
+  });
+
+  return nextStatus;
 }
 
 export function findUserSubscriptionWithTier(userId: string) {

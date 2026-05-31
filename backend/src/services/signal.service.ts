@@ -54,6 +54,24 @@ export async function receiveSignal(
       return { success: false, message: 'Master account not found' };
     }
 
+    const masterTicket = signal.ticket ? BigInt(signal.ticket) : null;
+
+    if (masterTicket) {
+      const existingSignal = await signalRepository.findSignalByMasterTicket({
+        providerId,
+        mt5AccountId: mt5Account.id,
+        masterTicket,
+      });
+
+      if (existingSignal) {
+        return {
+          success: true,
+          message: 'Signal already received',
+          signalId: existingSignal.id,
+        };
+      }
+    }
+
     const newSignal = await signalRepository.createSignal({
       providerId,
       mt5AccountId: mt5Account.id,
@@ -64,7 +82,7 @@ export async function receiveSignal(
       price: signal.price,
       sl: signal.sl || null,
       tp: signal.tp || null,
-      masterTicket: signal.ticket ? BigInt(signal.ticket) : null,
+      masterTicket,
       magic: signal.magic || null,
       comment: signal.comment || null,
       expiresAt: new Date(Date.now() + 120 * 1000), // 2 minutes expiry
@@ -175,6 +193,8 @@ export async function acknowledgeExecution(
 
     // If already in a terminal state, return success (idempotent)
     if (TERMINAL_STATUSES.includes(existing.status)) {
+      await signalRepository.reconcileSignalStatusFromExecutions(existing.signalId);
+
       return {
         success: true,
         message: `Already acknowledged as ${existing.status}`
@@ -210,11 +230,15 @@ export async function acknowledgeExecution(
         userId,
         mt5AccountId
       );
+      await signalRepository.reconcileSignalStatusFromExecutions(existing.signalId);
+
       return {
         success: true,
         message: `Already acknowledged as ${current?.status || 'UNKNOWN'}`
       };
     }
+
+    await signalRepository.reconcileSignalStatusFromExecutions(existing.signalId);
 
     return { success: true, message: 'Execution acknowledged' };
   } catch (error) {

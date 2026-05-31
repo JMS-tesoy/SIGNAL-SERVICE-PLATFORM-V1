@@ -318,11 +318,25 @@ export interface MT5AccountResponse {
   id: string;
   accountId: string;
   accountType: 'MASTER' | 'SLAVE';
+  accountEnvironment: 'DEMO' | 'LIVE';
   broker: string | null;
   server: string | null;
+  status: string;
   isConnected: boolean;
   lastHeartbeat: string | null;
   hasApiKey: boolean;
+  allowedMasterAccountId: string | null;
+  assignedMaster: {
+    id: string;
+    accountId: string;
+    accountEnvironment: 'DEMO' | 'LIVE';
+    broker: string | null;
+    server: string | null;
+    status: string;
+  } | null;
+  followersAssigned: number;
+  allowSignalSend: boolean;
+  allowSignalReceive: boolean;
   balance: number | null;
   equity: number | null;
   profit: number | null;
@@ -375,6 +389,7 @@ export const userApi = {
   addMT5Account: (token: string, data: {
     accountId: string;
     accountType: 'MASTER' | 'SLAVE';
+    accountEnvironment: 'DEMO' | 'LIVE';
     broker?: string;
     server: string;
   }) =>
@@ -407,6 +422,21 @@ export const userApi = {
         token,
       }
     ),
+
+  assignMT5ReceiverMaster: (
+    token: string,
+    receiverId: string,
+    masterAccountId: string
+  ) =>
+    apiFetch<{
+      account: MT5AccountResponse;
+      assignedMaster: MT5AccountResponse['assignedMaster'];
+      message: string;
+    }>(`/api/users/mt5-accounts/${receiverId}/assign-master`, {
+      method: 'PATCH',
+      token,
+      body: JSON.stringify({ masterAccountId }),
+    }),
 
   getSessions: (token: string) =>
     apiFetch<{ sessions: any[] }>('/api/users/sessions', { token }),

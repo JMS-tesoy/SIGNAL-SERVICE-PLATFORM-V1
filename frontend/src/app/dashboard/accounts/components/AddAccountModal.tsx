@@ -10,6 +10,8 @@ type AddAccountModalProps = {
   validation: AccountValidation;
   error: string;
   isFreeAccount: boolean;
+  isTrialAccount: boolean;
+  canUseLiveAccounts: boolean;
   isValid: boolean;
   isLoading: boolean;
   onClose: () => void;
@@ -24,6 +26,8 @@ export function AddAccountModal({
   validation,
   error,
   isFreeAccount,
+  isTrialAccount,
+  canUseLiveAccounts,
   isValid,
   isLoading,
   onClose,
@@ -106,6 +110,44 @@ export function AddAccountModal({
                     Master Signal Provider is visible for reference, but disabled on Free accounts. Upgrade to enable signal provider accounts.
                   </p>
                 )}
+              </div>
+
+              <div>
+                <label htmlFor="mt5-account-environment" className="block text-sm font-medium mb-2">Account Environment *</label>
+                <select
+                  id="mt5-account-environment"
+                  name="accountEnvironment"
+                  value={newAccount.accountEnvironment}
+                  onChange={(event) => {
+                    if (event.target.value === "LIVE" && !canUseLiveAccounts) {
+                      onError(
+                        isTrialAccount
+                          ? "Trial accounts can only use demo MT5/MT4 accounts. Upgrade to connect live accounts."
+                          : "Your subscription plan does not allow live MT5/MT4 accounts. Upgrade to connect live accounts."
+                      );
+                      return;
+                    }
+
+                    onChange({
+                      ...newAccount,
+                      accountEnvironment: event.target.value as "DEMO" | "LIVE",
+                    });
+                  }}
+                  className="input"
+                >
+                  <option value="DEMO">Demo</option>
+                  <option value="LIVE" disabled={!canUseLiveAccounts}>
+                    Live{!canUseLiveAccounts ? " - Upgrade required" : ""}
+                  </option>
+                </select>
+                <p className="mt-2 flex items-start gap-2 text-xs text-foreground-muted">
+                  <Info className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-primary" />
+                  {isTrialAccount
+                    ? "Trial users can only use demo MT5/MT4 accounts."
+                    : canUseLiveAccounts
+                      ? "Choose Demo for practice servers or Live for real trading accounts."
+                      : "Upgrade to connect live MT5/MT4 accounts."}
+                </p>
               </div>
 
               <ValidatedInput

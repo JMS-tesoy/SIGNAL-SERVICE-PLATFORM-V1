@@ -12,9 +12,11 @@ import {
   Key,
   Laptop,
   Loader2,
+  Radio,
   Server,
   ShieldAlert,
   Trash2,
+  Users,
 } from "lucide-react";
 import type { GeneratedKey, MT5Account } from "../types";
 import { formatHeartbeat, getHealthState, money } from "../utils";
@@ -133,6 +135,9 @@ const getLicenseValidity = (account: AccountWithLicense, eaTypeLabel: string) =>
 
 type AccountCardProps = {
   account: MT5Account;
+  masterOptions: MT5Account[];
+  selectedMasterIds: Record<string, string>;
+  isTrialAccount: boolean;
   generatedKey: GeneratedKey;
   copiedValue: string;
   actionLoading: string | null;
@@ -140,10 +145,15 @@ type AccountCardProps = {
   onDelete: (accountId: string) => void;
   onGenerate: (account: MT5Account) => void;
   onRevoke: (account: MT5Account) => void;
+  onMasterSelectionChange: (receiverId: string, masterAccountId: string) => void;
+  onAssignMaster: (receiverId: string) => void;
 };
 
 export function AccountCard({
   account,
+  masterOptions,
+  selectedMasterIds,
+  isTrialAccount,
   generatedKey,
   copiedValue,
   actionLoading,
@@ -151,6 +161,8 @@ export function AccountCard({
   onDelete,
   onGenerate,
   onRevoke,
+  onMasterSelectionChange,
+  onAssignMaster,
 }: AccountCardProps) {
   const [showGeneratedKey, setShowGeneratedKey] = useState(false);
   const health = getHealthState(account);
@@ -163,6 +175,21 @@ export function AccountCard({
   const cloudProtectEndpoint = isMasterAccount
     ? `${mt5WebRequestUrl}/api/mt5/license/verify`
     : `${mt5WebRequestUrl}/api/mt5/signals/pull`;
+  const selectedMasterId =
+    selectedMasterIds[account.id] ?? account.allowedMasterAccountId ?? "";
+  const assignedMasterLabel = account.assignedMaster
+    ? `${account.assignedMaster.broker || "Unknown broker"} ${account.assignedMaster.accountId}`
+    : "None";
+  const assignedMasterDetail = account.assignedMaster
+    ? `${account.assignedMaster.broker || "Unknown broker"} / ${account.assignedMaster.accountId}`
+    : "";
+  const eaOnlineLabel = account.isConnected ? "Online" : "Offline";
+  const compatibleMasterOptions = masterOptions.filter(
+    (master) =>
+      master.accountEnvironment === account.accountEnvironment &&
+      (!isTrialAccount || master.accountEnvironment === "DEMO")
+  );
+
   return (
     <motion.div layout className="card flex flex-col gap-5">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
@@ -234,11 +261,100 @@ export function AccountCard({
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
+      <div className="grid gap-3 lg:grid-cols-4">
         <DetailItem icon={Server} label="Server" value={account.server || "Not set"} />
         <DetailItem icon={Info} label="Broker" value={account.broker || "Not set"} />
         <DetailItem icon={Key} label="API key" value={account.hasApiKey ? "Generated" : "Not generated"} />
+        <DetailItem icon={ShieldAlert} label="Environment" value={account.accountEnvironment === "LIVE" ? "Live" : "Demo"} />
       </div>
+
+      <div className="grid gap-3 lg:grid-cols-3">
+        {isMasterAccount ? (
+          <>
+            <DetailItem icon={Radio} label="Signal sending" value={account.allowSignalSend ? "Enabled" : "Disabled"} />
+            <DetailItem icon={Laptop} label="Connected Sender EA" value={eaOnlineLabel} />
+            <DetailItem icon={Users} label="Followers assigned" value={account.followersAssigned.toString()} />
+          </>
+        ) : (
+          <>
+            <DetailItem icon={Radio} label="Signal receiving" value={account.allowSignalReceive ? "Enabled" : "Disabled"} />
+            <DetailItem icon={Users} label="Assigned Master" value={assignedMasterLabel} />
+            <DetailItem icon={Laptop} label="Receiver EA" value={eaOnlineLabel} />
+          </>
+        )}
+      </div>
+
+      {!isMasterAccount && (
+        <div className="rounded-xl border border-border bg-background/50 p-4">
+          <div className="mb-3">
+            <p className="text-sm font-semibold">Follow Master</p>
+            <p className="mt-1 text-xs text-foreground-muted">
+              Choose which Master account this Receiver should pull approved backend signals from.
+            </p>
+          </div>
+
+          {account.assignedMaster ? (
+            <p className="mb-3 text-sm text-foreground-muted">
+              Current assignment:{" "}
+              <span className="font-medium text-foreground">
+                Following: {assignedMasterDetail}
+              </span>
+              <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
+                {account.assignedMaster.accountEnvironment === "LIVE" ? "Live" : "Demo"}
+              </span>
+            </p>
+          ) : (
+            <p className="mb-3 text-sm text-foreground-muted">
+              Current assignment: No Master assigned.
+            </p>
+          )}
+
+          {compatibleMasterOptions.length === 0 ? (
+            <div className="rounded-lg border border-accent-yellow/20 bg-accent-yellow/10 px-3 py-2 text-sm text-accent-yellow">
+              No compatible Master account available. Trial users can only assign demo accounts.
+            </div>
+          ) : (
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
+              <div>
+                <label htmlFor={`master-assignment-${account.id}`} className="mb-2 block text-sm font-medium">
+                  Master account
+                </label>
+                <select
+                  id={`master-assignment-${account.id}`}
+                  value={selectedMasterId}
+                  onChange={(event) => onMasterSelectionChange(account.id, event.target.value)}
+                  className="input"
+                >
+                  <option value="">Select a Master account</option>
+                  {compatibleMasterOptions.map((master) => (
+                    <option key={master.id} value={master.id} disabled={master.status !== "ACTIVE"}>
+                      {master.broker || "Unknown broker"} / {master.accountId}
+                      {` / ${master.accountEnvironment === "LIVE" ? "Live" : "Demo"}`}
+                      {master.server ? ` / ${master.server}` : ""}
+                      {master.status !== "ACTIVE" ? ` (${master.status})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  type="button"
+                  onClick={() => onAssignMaster(account.id)}
+                  disabled={actionLoading === `assign-${account.id}` || !selectedMasterId}
+                  className="btn-primary flex h-11 w-full items-center justify-center gap-2 px-4 lg:w-auto"
+                >
+                  {actionLoading === `assign-${account.id}` ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    "Save assignment"
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className={`rounded-xl border px-4 py-3 ${licenseValidity.tone}`}>
         <div className="flex items-start gap-3">

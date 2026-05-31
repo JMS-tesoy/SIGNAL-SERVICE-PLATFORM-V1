@@ -9,6 +9,7 @@ type UpdateProfileData = {
 type AddMt5AccountData = {
   accountId: string;
   accountType: "MASTER" | "SLAVE";
+  accountEnvironment: "DEMO" | "LIVE";
   broker?: string;
   server: string;
 };
@@ -110,6 +111,23 @@ export function createMt5Account(userId: string, data: AddMt5AccountData) {
 export function findMt5AccountsByUserId(userId: string) {
   return prisma.mT5Account.findMany({
     where: { userId },
+    include: {
+      allowedMasterAccount: {
+        select: {
+          id: true,
+          accountId: true,
+          accountEnvironment: true,
+          broker: true,
+          server: true,
+          status: true,
+        },
+      },
+      _count: {
+        select: {
+          allowedFollowers: true,
+        },
+      },
+    },
     orderBy: { createdAt: "desc" },
   });
 }
@@ -140,6 +158,36 @@ export function updateMt5AccountApiKey(
 export function findMt5AccountByIdAndUserId(accountId: string, userId: string) {
   return prisma.mT5Account.findFirst({
     where: { id: accountId, userId },
+  });
+}
+
+export function assignMt5ReceiverMaster(
+  receiverId: string,
+  masterAccountId: string
+) {
+  return prisma.mT5Account.update({
+    where: { id: receiverId },
+    data: {
+      allowedMasterAccountId: masterAccountId,
+      allowSignalReceive: true,
+    },
+    include: {
+      allowedMasterAccount: {
+        select: {
+          id: true,
+          accountId: true,
+          accountEnvironment: true,
+          broker: true,
+          server: true,
+          status: true,
+        },
+      },
+      _count: {
+        select: {
+          allowedFollowers: true,
+        },
+      },
+    },
   });
 }
 

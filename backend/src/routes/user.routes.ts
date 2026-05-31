@@ -22,10 +22,15 @@ import {
   formatMt5ApiKeyUsage,
   formatPlanUsage,
 } from "../utils/mt5-account-presenter.js";
-import { getMt5AccountEligibilityError } from "../utils/mt5-account-policy.js";
+import {
+  getMt5AccountEligibilityError,
+  getMt5AssignmentEligibilityError,
+  getMt5EnvironmentEligibilityError,
+} from "../utils/mt5-account-policy.js";
 import { userRepository } from "../database/repositories/index.js";
 import {
   addMT5AccountSchema,
+  assignMT5ReceiverMasterSchema,
   changePasswordSchema,
   updateProfileSchema,
   uploadAvatarSchema,
@@ -241,6 +246,7 @@ router.post(
 
     const eligibilityError = getMt5AccountEligibilityError({
       accountType: data.accountType,
+      accountEnvironment: data.accountEnvironment,
       subscription,
       currentSlaveCount,
     });
@@ -290,6 +296,81 @@ router.get(
 );
 
 // =============================================================================
+// ASSIGN MASTER ACCOUNT TO MT5 RECEIVER
+// =============================================================================
+
+router.patch(
+  "/mt5-accounts/:receiverId/assign-master",
+  authenticate,
+  asyncHandler(async (req: Request, res: Response) => {
+    const { receiverId } = req.params;
+    const { masterAccountId } = assignMT5ReceiverMasterSchema.parse(req.body);
+
+    const [receiver, master, subscription] = await Promise.all([
+      userRepository.findMt5AccountByIdAndUserId(receiverId, req.user!.id),
+      userRepository.findMt5AccountByIdAndUserId(masterAccountId, req.user!.id),
+      userRepository.findSubscriptionWithTierByUserId(req.user!.id),
+    ]);
+
+    if (!receiver) {
+      return res.status(404).json({ error: "Receiver account not found" });
+    }
+
+    if (receiver.accountType !== "SLAVE") {
+      return res
+        .status(400)
+        .json({ error: "Only Receiver / Slave accounts can follow a master" });
+    }
+
+    if (!master) {
+      return res.status(404).json({ error: "Master account not found" });
+    }
+
+    if (master.accountType !== "MASTER") {
+      return res
+        .status(400)
+        .json({ error: "Selected account is not a Master account" });
+    }
+
+    if (master.status !== "ACTIVE") {
+      return res
+        .status(400)
+        .json({ error: "Selected Master account must be active" });
+    }
+
+    const assignmentEligibilityError = getMt5AssignmentEligibilityError({
+      subscription,
+      receiver,
+      master,
+    });
+
+    if (assignmentEligibilityError) {
+      return res.status(403).json({ error: assignmentEligibilityError });
+    }
+
+    const account = await userRepository.assignMt5ReceiverMaster(
+      receiver.id,
+      master.id
+    );
+
+    res.json({
+      account: formatMt5Account(account),
+      assignedMaster: account.allowedMasterAccount
+        ? {
+            id: account.allowedMasterAccount.id,
+            accountId: account.allowedMasterAccount.accountId,
+            accountEnvironment: account.allowedMasterAccount.accountEnvironment,
+            broker: account.allowedMasterAccount.broker,
+            server: account.allowedMasterAccount.server,
+            status: account.allowedMasterAccount.status,
+          }
+        : null,
+      message: "Receiver master assignment saved",
+    });
+  })
+);
+
+// =============================================================================
 // GENERATE API KEY FOR MT5 ACCOUNT
 // =============================================================================
 
@@ -313,26 +394,39 @@ router.post(
     const apiKey = generateMt5ApiKey();
 
     const account = await userRepository.findMt5AccountByIdAndUserId(
-  accountId,
-  req.user!.id
-);
+      accountId,
+      req.user!.id
+    );
 
-if (!account) {
-  return res.status(404).json({ error: "Account not found" });
-}
+    if (!account) {
+      return res.status(404).json({ error: "Account not found" });
+    }
 
-await userRepository.updateMt5AccountApiKey(accountId, {
-  apiKey: hashMt5ApiKey(apiKey),
-  apiKeyPrefix: apiKey.slice(0, 12),
-  apiKeyRevokedAt: null,
-  apiKeyLastUsedAt: null,
-  status: "ACTIVE",
-  minEaVersion: "1.0.0",
-  maxDevices: 1,
-  allowSignalSend: account.accountType === "MASTER",
-  allowSignalReceive: account.accountType === "SLAVE",
-  isConnected: false,
-});
+    const subscription = await userRepository.findSubscriptionWithTierByUserId(
+      req.user!.id
+    );
+
+    const environmentEligibilityError = getMt5EnvironmentEligibilityError({
+      subscription,
+      accountEnvironment: account.accountEnvironment,
+    });
+
+    if (environmentEligibilityError) {
+      return res.status(403).json({ error: environmentEligibilityError });
+    }
+
+    await userRepository.updateMt5AccountApiKey(accountId, {
+      apiKey: hashMt5ApiKey(apiKey),
+      apiKeyPrefix: apiKey.slice(0, 12),
+      apiKeyRevokedAt: null,
+      apiKeyLastUsedAt: null,
+      status: "ACTIVE",
+      minEaVersion: "1.0.0",
+      maxDevices: 1,
+      allowSignalSend: account.accountType === "MASTER",
+      allowSignalReceive: account.accountType === "SLAVE",
+      isConnected: false,
+    });
 
     res.json({
       apiKey,

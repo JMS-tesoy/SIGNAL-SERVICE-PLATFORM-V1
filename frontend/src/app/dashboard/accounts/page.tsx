@@ -35,6 +35,7 @@ import { getHealthState } from "./utils";
 const INITIAL_NEW_ACCOUNT: NewAccountForm = {
   accountId: "",
   accountType: "SLAVE",
+  accountEnvironment: "DEMO",
   broker: "",
   server: "",
 };
@@ -57,6 +58,7 @@ export default function AccountsPage() {
   const [filter, setFilter] = useState<AccountFilter>("ALL");
   const [accountPlanUsage, setAccountPlanUsage] = useState<AccountPlanUsage>(null);
   const [message, setMessage] = useState<MessageState>({ type: "", text: "" });
+  const [selectedMasterIds, setSelectedMasterIds] = useState<Record<string, string>>({});
   const [confirmAction, setConfirmAction] = useState<{
     account: MT5Account;
     type: KeyAction;
@@ -67,6 +69,10 @@ export default function AccountsPage() {
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   const isFreeAccount = !subscription || subscription.tier.name === "free";
+  const subscriptionStatus = subscription?.status?.toUpperCase() ?? "";
+  const isTrialAccount = subscriptionStatus === "TRIAL" || subscriptionStatus === "TRIALING";
+  const canUseLiveAccounts =
+    subscriptionStatus === "ACTIVE" && subscription?.tier.name !== "free";
   const maxSlaveAccounts =
     accountPlanUsage?.maxSlaveAccounts ?? subscription?.tier.maxSlaveAccounts ?? 1;
   const accountId = newAccount.accountId.trim();
@@ -100,7 +106,8 @@ export default function AccountsPage() {
     !accountValidation.accountId &&
     !accountValidation.server &&
     !accountValidation.broker &&
-    !(isFreeAccount && newAccount.accountType === "MASTER");
+    !(isFreeAccount && newAccount.accountType === "MASTER") &&
+    (newAccount.accountEnvironment !== "LIVE" || canUseLiveAccounts);
 
   const fetchAccounts = async () => {
     if (!accessToken) return;
@@ -109,8 +116,21 @@ export default function AccountsPage() {
     try {
       const result = await userApi.getMT5Accounts(accessToken);
       if (result.data) {
-        setAccounts(result.data.accounts);
+        const loadedAccounts = result.data.accounts;
+
+        setAccounts(loadedAccounts);
         setAccountPlanUsage(result.data.planUsage);
+        setSelectedMasterIds((current) => {
+          const next = { ...current };
+
+          loadedAccounts.forEach((account) => {
+            if (account.accountType === "SLAVE") {
+              next[account.id] = next[account.id] || account.allowedMasterAccountId || "";
+            }
+          });
+
+          return next;
+        });
       }
     } catch {
       setMessage({ type: "error", text: "Failed to load MT5 accounts." });
@@ -176,6 +196,7 @@ export default function AccountsPage() {
     });
   }, [accounts, filter]);
 
+  const allMasterAccounts = accounts.filter((account) => account.accountType === "MASTER");
   const masterAccounts = filteredAccounts.filter((account) => account.accountType === "MASTER");
   const slaveAccounts = filteredAccounts.filter((account) => account.accountType === "SLAVE");
 
@@ -205,6 +226,12 @@ export default function AccountsPage() {
         accountValidation.accountId ||
           accountValidation.server ||
           accountValidation.broker ||
+          (newAccount.accountEnvironment === "LIVE" && isTrialAccount
+            ? "Trial accounts can only use demo MT5/MT4 accounts. Upgrade to connect live accounts."
+            : "") ||
+          (newAccount.accountEnvironment === "LIVE"
+            ? "Your subscription plan does not allow live MT5/MT4 accounts. Upgrade to connect live accounts."
+            : "") ||
           "Please fix the highlighted fields."
       );
       setActionLoading(null);
@@ -215,6 +242,7 @@ export default function AccountsPage() {
       const result = await userApi.addMT5Account(accessToken, {
         accountId,
         accountType: newAccount.accountType,
+        accountEnvironment: newAccount.accountEnvironment,
         broker: broker || undefined,
         server,
       });
@@ -314,6 +342,46 @@ export default function AccountsPage() {
     }
   };
 
+  const handleMasterSelectionChange = (receiverId: string, masterAccountId: string) => {
+    setSelectedMasterIds((current) => ({
+      ...current,
+      [receiverId]: masterAccountId,
+    }));
+  };
+
+  const handleAssignMaster = async (receiverId: string) => {
+    if (!accessToken) return;
+
+    const masterAccountId = selectedMasterIds[receiverId];
+
+    if (!masterAccountId) {
+      setMessage({ type: "error", text: "Choose a Master account before saving this Receiver." });
+      return;
+    }
+
+    setActionLoading(`assign-${receiverId}`);
+    setMessage({ type: "", text: "" });
+
+    try {
+      const result = await userApi.assignMT5ReceiverMaster(accessToken, receiverId, masterAccountId);
+
+      if (result.error || !result.data?.account) {
+        setMessage({ type: "error", text: result.error || "Failed to save Receiver master assignment." });
+      } else {
+        setAccounts((current) =>
+          current.map((account) =>
+            account.id === receiverId ? result.data!.account : account
+          )
+        );
+        setMessage({ type: "success", text: "Receiver master assignment saved." });
+      }
+    } catch {
+      setMessage({ type: "error", text: "Failed to save Receiver master assignment." });
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -403,6 +471,9 @@ export default function AccountsPage() {
               title="Master Accounts (Signal Providers)"
               dotClassName="bg-accent-purple"
               accounts={masterAccounts}
+              masterOptions={allMasterAccounts}
+              selectedMasterIds={selectedMasterIds}
+              isTrialAccount={isTrialAccount}
               generatedKey={generatedKey}
               copiedValue={copiedValue}
               actionLoading={actionLoading}
@@ -410,6 +481,8 @@ export default function AccountsPage() {
               onDelete={handleDeleteAccount}
               onGenerate={handleGenerateKey}
               onRevoke={handleRevokeKey}
+              onMasterSelectionChange={handleMasterSelectionChange}
+              onAssignMaster={handleAssignMaster}
             />
           )}
 
@@ -418,6 +491,9 @@ export default function AccountsPage() {
               title="Slave Accounts (Signal Receivers)"
               dotClassName="bg-primary"
               accounts={slaveAccounts}
+              masterOptions={allMasterAccounts}
+              selectedMasterIds={selectedMasterIds}
+              isTrialAccount={isTrialAccount}
               generatedKey={generatedKey}
               copiedValue={copiedValue}
               actionLoading={actionLoading}
@@ -425,6 +501,8 @@ export default function AccountsPage() {
               onDelete={handleDeleteAccount}
               onGenerate={handleGenerateKey}
               onRevoke={handleRevokeKey}
+              onMasterSelectionChange={handleMasterSelectionChange}
+              onAssignMaster={handleAssignMaster}
             />
           )}
         </div>
@@ -436,6 +514,8 @@ export default function AccountsPage() {
         validation={accountValidation}
         error={error}
         isFreeAccount={isFreeAccount}
+        isTrialAccount={isTrialAccount}
+        canUseLiveAccounts={canUseLiveAccounts}
         isValid={addFormIsValid}
         isLoading={actionLoading === "add"}
         onClose={() => setShowAddModal(false)}

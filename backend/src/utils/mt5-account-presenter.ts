@@ -2,6 +2,7 @@ type Mt5AccountForResponse = {
   id: string;
   accountId: string;
   accountType: string;
+  accountEnvironment: string;
   broker: string | null;
   server: string | null;
   status: string;
@@ -14,6 +15,18 @@ type Mt5AccountForResponse = {
   maxDevices: number;
   allowSignalSend: boolean;
   allowSignalReceive: boolean;
+  allowedMasterAccountId: string | null;
+  allowedMasterAccount?: {
+    id: string;
+    accountId: string;
+    accountEnvironment: string;
+    broker: string | null;
+    server: string | null;
+    status: string;
+  } | null;
+  _count?: {
+    allowedFollowers: number;
+  };
   balance: unknown;
   equity: unknown;
   profit: unknown;
@@ -36,6 +49,7 @@ export function formatMt5Account(account: Mt5AccountForResponse) {
     id: account.id,
     accountId: account.accountId,
     accountType: account.accountType,
+    accountEnvironment: account.accountEnvironment,
     broker: account.broker,
     server: account.server,
     status: account.status,
@@ -52,6 +66,18 @@ export function formatMt5Account(account: Mt5AccountForResponse) {
     maxDevices: account.maxDevices,
     allowSignalSend: account.allowSignalSend,
     allowSignalReceive: account.allowSignalReceive,
+    allowedMasterAccountId: account.allowedMasterAccountId,
+    assignedMaster: account.allowedMasterAccount
+      ? {
+          id: account.allowedMasterAccount.id,
+          accountId: account.allowedMasterAccount.accountId,
+          accountEnvironment: account.allowedMasterAccount.accountEnvironment,
+          broker: account.allowedMasterAccount.broker,
+          server: account.allowedMasterAccount.server,
+          status: account.allowedMasterAccount.status,
+        }
+      : null,
+    followersAssigned: account._count?.allowedFollowers ?? 0,
     balance: decimalToNullableNumber(account.balance),
     equity: decimalToNullableNumber(account.equity),
     profit: decimalToNullableNumber(account.profit),
