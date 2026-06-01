@@ -81,3 +81,13 @@ EA's-private
 
 EA's-private/
 
+
+# Do not store compiled EA binaries inside source folders
+src/mq5/**/*.ex5
+src/mq5/**/*.ex4
+
+# Avoid duplicate MT5 compile copies
+* (1).ex5
+* (2).ex5
+* (1).ex4
+* (2).ex4
