@@ -1,4 +1,5 @@
 import prisma from "../client.js";
+import { getMinEaVersionForAccountType } from "../../utils/mt5-account-policy.js";
 
 type UpdateProfileData = {
   name?: string;
@@ -104,6 +105,7 @@ export function createMt5Account(userId: string, data: AddMt5AccountData) {
     data: {
       userId,
       ...data,
+      minEaVersion: getMinEaVersionForAccountType(data.accountType),
     },
   });
 }

@@ -12,6 +12,8 @@ type SubscriptionForMt5Policy = {
 
 const ACTIVE_SIGNAL_STATUSES = new Set(["ACTIVE", "TRIAL", "TRIALING"]);
 const TRIAL_STATUSES = new Set(["TRIAL", "TRIALING"]);
+const MIN_MT5_SENDER_EA_VERSION = "1.12";
+const MIN_MT5_RECEIVER_EA_VERSION = "1.13";
 const TRIAL_DEMO_ONLY_MESSAGE =
   "Trial accounts can only use demo MT5/MT4 accounts. Upgrade to connect live accounts.";
 
@@ -51,6 +53,39 @@ export function inferMt5AccountEnvironment(input: {
 }): AccountEnvironment {
   const value = `${input.broker ?? ""} ${input.server ?? ""}`;
   return /\b(demo|trial|practice)\b/i.test(value) ? "DEMO" : "LIVE";
+}
+
+export function compareMt5EaVersions(current: string, minimum: string) {
+  const currentParts = current.split(".").map((part) => Number(part) || 0);
+  const minimumParts = minimum.split(".").map((part) => Number(part) || 0);
+  const maxLength = Math.max(currentParts.length, minimumParts.length);
+
+  for (let index = 0; index < maxLength; index += 1) {
+    const currentValue = currentParts[index] ?? 0;
+    const minimumValue = minimumParts[index] ?? 0;
+
+    if (currentValue > minimumValue) return 1;
+    if (currentValue < minimumValue) return -1;
+  }
+
+  return 0;
+}
+
+export function getMinEaVersionForAccountType(accountType: AccountType) {
+  return accountType === "MASTER"
+    ? MIN_MT5_SENDER_EA_VERSION
+    : MIN_MT5_RECEIVER_EA_VERSION;
+}
+
+export function getEffectiveMinEaVersion(input: {
+  accountType: AccountType;
+  storedMinEaVersion: string;
+}) {
+  const accountTypeMinimum = getMinEaVersionForAccountType(input.accountType);
+
+  return compareMt5EaVersions(input.storedMinEaVersion, accountTypeMinimum) >= 0
+    ? input.storedMinEaVersion
+    : accountTypeMinimum;
 }
 
 export function getMt5EnvironmentEligibilityError(input: {

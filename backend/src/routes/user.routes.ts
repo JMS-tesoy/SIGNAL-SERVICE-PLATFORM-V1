@@ -421,7 +421,6 @@ router.post(
       apiKeyRevokedAt: null,
       apiKeyLastUsedAt: null,
       status: "ACTIVE",
-      minEaVersion: "1.0.0",
       maxDevices: 1,
       allowSignalSend: account.accountType === "MASTER",
       allowSignalReceive: account.accountType === "SLAVE",

@@ -8,6 +8,10 @@ import type {
 import prisma from "../config/database.js";
 import { signalRepository } from "../database/repositories/index.js";
 import { hashMt5ApiKey } from "../utils/api-key.js";
+import {
+  compareMt5EaVersions,
+  getEffectiveMinEaVersion,
+} from "../utils/mt5-account-policy.js";
 import type {
   Mt5HeartbeatInput,
   Mt5LicenseVerifyInput,
@@ -62,22 +66,6 @@ function blocked(code: string, message: string) {
     code,
     message,
   };
-}
-
-function compareVersion(current: string, minimum: string) {
-  const currentParts = current.split(".").map((part) => Number(part) || 0);
-  const minimumParts = minimum.split(".").map((part) => Number(part) || 0);
-  const maxLength = Math.max(currentParts.length, minimumParts.length);
-
-  for (let index = 0; index < maxLength; index += 1) {
-    const currentValue = currentParts[index] ?? 0;
-    const minimumValue = minimumParts[index] ?? 0;
-
-    if (currentValue > minimumValue) return 1;
-    if (currentValue < minimumValue) return -1;
-  }
-
-  return 0;
 }
 
 async function authenticateApiKey(rawApiKey: string): Promise<Mt5AuthContext | null> {
@@ -158,7 +146,12 @@ function validateBaseAccount(
     );
   }
 
-  if (compareVersion(input.eaVersion, mt5Account.minEaVersion) < 0) {
+  const effectiveMinEaVersion = getEffectiveMinEaVersion({
+    accountType: mt5Account.accountType,
+    storedMinEaVersion: mt5Account.minEaVersion,
+  });
+
+  if (compareMt5EaVersions(input.eaVersion, effectiveMinEaVersion) < 0) {
     return blocked("BLOCK_OLD_EA_VERSION", "Please update your EA to continue");
   }
 
