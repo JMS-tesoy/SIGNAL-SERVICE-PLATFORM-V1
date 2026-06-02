@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   Download,
@@ -9,8 +9,6 @@ import {
   AlertCircle,
   CheckCircle,
   HelpCircle,
-  ChevronDown,
-  Building2,
   Copy,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
@@ -21,31 +19,12 @@ const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   "http://localhost:3001";
 
-// Popular MT5 brokers list
-const BROKERS = [
-  { id: 'icmarkets', name: 'IC Markets', server: 'ICMarketsSC-Demo' },
-  { id: 'xm', name: 'XM Global', server: 'XMGlobal-MT5' },
-  { id: 'pepperstone', name: 'Pepperstone', server: 'Pepperstone-Demo' },
-  { id: 'fxpro', name: 'FxPro', server: 'FxPro-MT5' },
-  { id: 'oanda', name: 'OANDA', server: 'OANDA-MT5' },
-  { id: 'fxtm', name: 'FXTM', server: 'ForexTimeFXTM-Demo01' },
-  { id: 'exness', name: 'Exness', server: 'Exness-MT5Real' },
-  { id: 'roboforex', name: 'RoboForex', server: 'RoboForex-ECN' },
-  { id: 'tickmill', name: 'Tickmill', server: 'Tickmill-Demo' },
-  { id: 'admirals', name: 'Admirals (Admiral Markets)', server: 'AdmiralMarkets-Demo' },
-  { id: 'avatrade', name: 'AvaTrade', server: 'AvaTrade-Demo' },
-  { id: 'hfm', name: 'HFM (HotForex)', server: 'HFMarketsSV-Demo' },
-  { id: 'other', name: 'Other Broker', server: '' },
-];
-
 export default function DownloadsPage() {
   const { accessToken } = useAuthStore();
   const [downloads, setDownloads] = useState<DownloadFile[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
-  const [selectedBroker, setSelectedBroker] = useState(BROKERS[0].id);
-  const [showBrokerDropdown, setShowBrokerDropdown] = useState(false);
   const [copiedValue, setCopiedValue] = useState('');
 
   const copyText = async (value: string) => {
@@ -58,44 +37,32 @@ export default function DownloadsPage() {
     }
   };
 
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('[data-broker-dropdown]')) {
-        setShowBrokerDropdown(false);
-      }
-    };
-
-    if (showBrokerDropdown) {
-      document.addEventListener('click', handleClickOutside);
+  const fetchDownloads = useCallback(async () => {
+    if (!accessToken) {
+      setIsLoading(false);
+      return;
     }
 
-    return () => {
-      document.removeEventListener('click', handleClickOutside);
-    };
-  }, [showBrokerDropdown]);
+    setIsLoading(true);
+    setError('');
+
+    try {
+      const result = await downloadApi.getAvailableDownloads(accessToken);
+      if (result.data) {
+        setDownloads(result.data.downloads);
+      } else if (result.error) {
+        setError(result.error);
+      }
+    } catch {
+      setError('Failed to load downloads');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [accessToken]);
 
   useEffect(() => {
-    const fetchDownloads = async () => {
-      if (!accessToken) return;
-
-      try {
-        const result = await downloadApi.getAvailableDownloads(accessToken);
-        if (result.data) {
-          setDownloads(result.data.downloads);
-        } else if (result.error) {
-          setError(result.error);
-        }
-      } catch (err) {
-        setError('Failed to load downloads');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchDownloads();
-  }, [accessToken]);
+  }, [fetchDownloads]);
 
   const handleDownload = async (file: DownloadFile) => {
     if (!accessToken) return;
@@ -148,9 +115,14 @@ export default function DownloadsPage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-accent-red/10 border border-accent-red/20 rounded-xl flex items-center gap-3 text-accent-red">
-          <AlertCircle className="w-5 h-5 flex-shrink-0" />
-          <span>{error}</span>
+        <div className="flex flex-col gap-3 rounded-xl border border-accent-red/20 bg-accent-red/10 p-4 text-accent-red sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button type="button" onClick={fetchDownloads} className="btn-secondary text-sm">
+            Retry
+          </button>
         </div>
       )}
 
@@ -198,17 +170,13 @@ export default function DownloadsPage() {
           </div>
         ) : (
           downloads.map((file, index) => {
-            const isReceiverEA = file.name.toLowerCase().includes('receiver') ||
-                                 file.filename.toLowerCase().includes('receiver');
-            const currentBroker = BROKERS.find(b => b.id === selectedBroker);
-
             return (
               <motion.div
                 key={file.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
-                className={`card relative ${isReceiverEA && showBrokerDropdown ? 'z-30' : 'z-0'}`}
+                className="card"
               >
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
@@ -241,63 +209,6 @@ export default function DownloadsPage() {
                   </button>
                 </div>
 
-                {/* Broker Selection for Signal Receiver EA */}
-                {isReceiverEA && (
-                  <div className="mt-4 pt-4 border-t border-border">
-                    <div className="flex items-center gap-2 mb-3">
-                      <Building2 className="w-4 h-4 text-primary" />
-                      <span className="text-sm font-medium">Select Your Broker</span>
-                    </div>
-
-                    <div className="relative" data-broker-dropdown>
-                      <button
-                        type="button"
-                        onClick={() => setShowBrokerDropdown(!showBrokerDropdown)}
-                        className="w-full sm:w-80 flex items-center justify-between px-4 py-3 bg-background-elevated border border-border rounded-xl text-left hover:border-primary/50 transition-colors"
-                      >
-                        <span className="text-foreground">
-                          {currentBroker?.name || 'Select a broker'}
-                        </span>
-                        <ChevronDown className={`w-4 h-4 text-foreground-muted transition-transform ${showBrokerDropdown ? 'rotate-180' : ''}`} />
-                      </button>
-
-                      {showBrokerDropdown && (
-                        <div className="absolute z-50 w-full sm:w-80 mt-2 max-h-64 overflow-y-auto rounded-xl border border-border bg-background-secondary py-2 shadow-2xl shadow-black/40 ring-1 ring-white/5">
-                          {BROKERS.map((broker) => (
-                            <button
-                              key={broker.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedBroker(broker.id);
-                                setShowBrokerDropdown(false);
-                              }}
-                              className={`w-full px-4 py-2.5 text-left hover:bg-background-elevated transition-colors flex items-center justify-between ${
-                                selectedBroker === broker.id ? 'bg-primary/10 text-primary' : 'text-foreground'
-                              }`}
-                            >
-                              <span>{broker.name}</span>
-                              {selectedBroker === broker.id && (
-                                <CheckCircle className="w-4 h-4" />
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    {currentBroker && currentBroker.id !== 'other' && (
-                      <p className="mt-2 text-xs text-foreground-muted">
-                        Default server: <span className="font-mono text-foreground-subtle">{currentBroker.server}</span>
-                      </p>
-                    )}
-
-                    {currentBroker?.id === 'other' && (
-                      <p className="mt-2 text-xs text-foreground-muted">
-                        The EA works with any MT5 broker. Configure your server in the EA settings.
-                      </p>
-                    )}
-                  </div>
-                )}
               </motion.div>
             );
           })

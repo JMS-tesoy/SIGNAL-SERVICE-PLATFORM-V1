@@ -72,9 +72,16 @@ export default function AccountsPage() {
   const subscriptionStatus = subscription?.status?.toUpperCase() ?? "";
   const isTrialAccount = subscriptionStatus === "TRIAL" || subscriptionStatus === "TRIALING";
   const canUseLiveAccounts =
-    subscriptionStatus === "ACTIVE" && subscription?.tier.name !== "free";
+    subscription?.capabilities?.canUseLiveAccounts ??
+    (subscriptionStatus === "ACTIVE" && subscription?.tier.name !== "free");
+  const canAddMasterAccount =
+    subscription?.capabilities?.canAddMasterAccount ??
+    (!isFreeAccount && subscriptionStatus === "ACTIVE");
   const maxSlaveAccounts =
-    accountPlanUsage?.maxSlaveAccounts ?? subscription?.tier.maxSlaveAccounts ?? 1;
+    accountPlanUsage?.maxSlaveAccounts ??
+    subscription?.capabilities?.maxSlaveAccounts ??
+    subscription?.tier.maxSlaveAccounts ??
+    1;
   const accountId = newAccount.accountId.trim();
   const broker = newAccount.broker.trim();
   const server = newAccount.server.trim();
@@ -106,7 +113,7 @@ export default function AccountsPage() {
     !accountValidation.accountId &&
     !accountValidation.server &&
     !accountValidation.broker &&
-    !(isFreeAccount && newAccount.accountType === "MASTER") &&
+    !(newAccount.accountType === "MASTER" && !canAddMasterAccount) &&
     (newAccount.accountEnvironment !== "LIVE" || canUseLiveAccounts);
 
   const fetchAccounts = async () => {
@@ -188,12 +195,12 @@ export default function AccountsPage() {
       return "Generate an API key and copy it into the Receiver EA.";
     }
 
-    if (isFreeAccount) {
+    if (!canAddMasterAccount) {
       return "Generate an API key and copy it into the Receiver EA. Sender EA requires a paid plan.";
     }
 
     return "Generate an API key and copy it into the Sender or Receiver EA.";
-  }, [accountStats.master, accountStats.slave, isFreeAccount]);
+  }, [accountStats.master, accountStats.slave, canAddMasterAccount]);
 
   const filteredAccounts = useMemo(() => {
     return accounts.filter((account) => {
@@ -523,7 +530,7 @@ export default function AccountsPage() {
         newAccount={newAccount}
         validation={accountValidation}
         error={error}
-        isFreeAccount={isFreeAccount}
+        isFreeAccount={!canAddMasterAccount}
         isTrialAccount={isTrialAccount}
         canUseLiveAccounts={canUseLiveAccounts}
         isValid={addFormIsValid}

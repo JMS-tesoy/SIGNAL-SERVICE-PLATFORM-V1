@@ -127,9 +127,15 @@ export default function SettingsPage() {
   }, [accessToken]);
 
   const fetchProfile = async ({ showLoading = false } = {}) => {
-    if (!accessToken) return;
+    if (!accessToken) {
+      if (showLoading) {
+        setIsLoading(false);
+      }
+      return;
+    }
     if (showLoading) {
       setIsLoading(true);
+      setMessage({ type: '', text: '' });
     }
 
     try {
@@ -152,8 +158,13 @@ export default function SettingsPage() {
 
         return profileUser;
       }
+
+      if (result.error) {
+        setMessage({ type: 'error', text: result.error });
+      }
     } catch (err) {
       console.error('Failed to fetch profile:', err);
+      setMessage({ type: 'error', text: 'Failed to load profile.' });
     } finally {
       if (showLoading) {
         setIsLoading(false);
@@ -300,6 +311,15 @@ export default function SettingsPage() {
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
           )}
           {message.text}
+          {message.type === 'error' && (
+            <button
+              type="button"
+              onClick={() => fetchProfile({ showLoading: true })}
+              className="ml-auto rounded-lg border border-current/30 px-3 py-1 text-xs hover:bg-background/20"
+            >
+              Retry
+            </button>
+          )}
         </motion.div>
       )}
 

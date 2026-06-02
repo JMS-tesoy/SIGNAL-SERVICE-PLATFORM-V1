@@ -439,8 +439,12 @@ export async function checkSignalLimit(userId: string): Promise<{
   const subscription =
     await subscriptionRepository.findSubscriptionWithTierByUserId(userId);
 
-  if (!subscription) {
+  if (!subscription || !["ACTIVE", "TRIAL", "TRIALING"].includes(subscription.status)) {
     return { allowed: false, remaining: 0, limit: 0 };
+  }
+
+  if (subscription.currentPeriodEnd < new Date()) {
+    return { allowed: false, remaining: 0, limit: subscription.tier.maxSignalsPerDay };
   }
 
   const limit = subscription.tier.maxSignalsPerDay;

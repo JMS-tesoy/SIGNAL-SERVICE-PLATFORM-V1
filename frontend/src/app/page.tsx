@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -12,12 +12,76 @@ import {
   Clock,
   Check,
   ArrowRight,
+  AlertCircle,
+  Loader2,
+  Lock,
+  Gift,
+  Radio,
   Menu,
   X
 } from 'lucide-react';
+import { subscriptionApi, type SubscriptionTierResponse } from '@/lib/api';
+
+function formatSignals(limit: number) {
+  return limit === -1 ? 'Unlimited signals/day' : `${limit} signals/day`;
+}
+
+function formatDelay(seconds: number) {
+  return seconds === 0 ? 'Instant delivery' : `${seconds}s signal delay`;
+}
+
+function getPlanSummary(plan: SubscriptionTierResponse) {
+  if (plan.name === 'free') return 'Demo Receiver testing';
+  if (plan.name === 'basic') return 'Individual live copying';
+  if (plan.name === 'pro') return 'Active trader copying';
+  if (plan.name === 'premium') return 'Professional receiver operations';
+  return plan.description || 'MT5 signal access';
+}
+
+function getPlanFeatures(plan: SubscriptionTierResponse) {
+  return [
+    formatSignals(plan.maxSignalsPerDay),
+    `${plan.maxSlaveAccounts} Receiver account${plan.maxSlaveAccounts === 1 ? '' : 's'}`,
+    plan.capabilities.canAddMasterAccount ? 'Sender account included' : 'Receiver only',
+    plan.capabilities.canUseLiveAccounts ? 'Demo and Live accounts' : 'Demo accounts only',
+    formatDelay(plan.signalDelay),
+  ];
+}
+
+function getMainPaidPlan(tiers: SubscriptionTierResponse[]) {
+  return (
+    tiers.find((tier) => tier.isPopular && tier.priceMonthly > 0) ||
+    tiers.find((tier) => tier.name === 'pro') ||
+    tiers.find((tier) => tier.priceMonthly > 0) ||
+    null
+  );
+}
 
 export default function HomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [pricingTiers, setPricingTiers] = useState<SubscriptionTierResponse[]>([]);
+  const [pricingLoading, setPricingLoading] = useState(true);
+  const [pricingError, setPricingError] = useState('');
+
+  useEffect(() => {
+    let isMounted = true;
+
+    subscriptionApi.getTiers().then((result) => {
+      if (!isMounted) return;
+
+      if (result.data) {
+        setPricingTiers(result.data.tiers);
+      } else {
+        setPricingError(result.error || 'Pricing plans are not available right now.');
+      }
+
+      setPricingLoading(false);
+    });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-background bg-mesh">
@@ -154,10 +218,10 @@ export default function HomePage() {
             transition={{ duration: 0.6, delay: 0.2 }}
           >
             {[
-              { label: 'Active Traders', value: '10,000+' },
-              { label: 'Signals Daily', value: '500+' },
-              { label: 'Success Rate', value: '78%' },
-              { label: 'Countries', value: '50+' },
+              { label: 'EA Roles', value: '2' },
+              { label: 'Demo Access', value: 'Free' },
+              { label: 'Live Access', value: 'Paid' },
+              { label: 'Plan Tiers', value: '4' },
             ].map((stat, i) => (
               <div key={i} className="card text-center p-3 sm:p-6">
                 <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-gradient mb-1 sm:mb-2">{stat.value}</div>
@@ -187,7 +251,7 @@ export default function HomePage() {
               {
                 icon: Shield,
                 title: 'Secure & Reliable',
-                description: '2FA authentication, encrypted connections, and 99.9% uptime guarantee.',
+                description: '2FA authentication, protected API keys, and Cloud Protect checks for EA access.',
                 color: 'text-accent-green',
               },
               {
@@ -198,8 +262,8 @@ export default function HomePage() {
               },
               {
                 icon: Users,
-                title: 'Expert Providers',
-                description: 'Follow verified signal providers with proven track records.',
+                title: 'Sender and Receiver Roles',
+                description: 'Use Sender accounts to publish signals and Receiver accounts to copy eligible signals.',
                 color: 'text-accent-purple',
               },
               {
@@ -236,91 +300,135 @@ export default function HomePage() {
       <section id="pricing" className="py-12 sm:py-20 px-4 sm:px-6 bg-background-secondary">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-10 sm:mb-16">
-            <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">Simple, Transparent Pricing</h2>
-            <p className="text-base sm:text-xl text-foreground-muted">Start free, upgrade when you're ready</p>
+            <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">Plans Built Around MT5 Access</h2>
+            <p className="text-base sm:text-xl text-foreground-muted">
+              Choose by Receiver capacity, Sender access, Demo/Live support, and signal delivery rules.
+            </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8">
-            {[
-              {
-                name: 'Free',
-                price: '$0',
-                period: 'forever',
-                description: 'Perfect for getting started',
-                features: ['5 signals/day', '1 MT5 account', '60s signal delay', 'Basic dashboard'],
-                cta: 'Get Started',
-                popular: false,
-              },
-              {
-                name: 'Basic',
-                price: '$29',
-                period: '/month',
-                description: 'For individual traders',
-                features: ['50 signals/day', '2 MT5 accounts', '30s signal delay', 'Signal history', 'Email support'],
-                cta: 'Subscribe',
-                popular: false,
-              },
-              {
-                name: 'Pro',
-                price: '$79',
-                period: '/month',
-                description: 'Best for active traders',
-                features: ['Unlimited signals', '5 MT5 accounts', '5s signal delay', 'Advanced analytics', 'Priority support', 'API access'],
-                cta: 'Subscribe',
-                popular: true,
-              },
-              {
-                name: 'Premium',
-                price: '$199',
-                period: '/month',
-                description: 'For professional operations',
-                features: ['Unlimited signals', '20 MT5 accounts', 'Instant signals', 'Custom reports', 'Dedicated support', 'White-label'],
-                cta: 'Contact Sales',
-                popular: false,
-              },
-            ].map((plan, i) => (
-              <motion.div
-                key={i}
-                className={`card relative ${plan.popular ? 'border-primary glow-primary' : ''}`}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: i * 0.1 }}
-                viewport={{ once: true }}
-              >
-                {plan.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-primary text-white text-sm font-medium rounded-full">
-                    Most Popular
-                  </div>
-                )}
-                <div className="mb-6">
-                  <h3 className="text-xl font-semibold mb-2">{plan.name}</h3>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-4xl font-bold">{plan.price}</span>
-                    <span className="text-foreground-muted">{plan.period}</span>
-                  </div>
-                  <p className="text-foreground-muted mt-2">{plan.description}</p>
-                </div>
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((feature, j) => (
-                    <li key={j} className="flex items-center gap-2">
-                      <Check className="w-5 h-5 text-accent-green" />
-                      <span className="text-foreground-muted">{feature}</span>
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  href="/register"
-                  className={`block text-center py-3 rounded-lg font-semibold transition ${
-                    plan.popular 
-                      ? 'bg-primary hover:bg-primary-hover text-white' 
-                      : 'bg-background-elevated hover:bg-background-tertiary border border-border'
-                  }`}
+          {pricingLoading ? (
+            <div className="flex h-48 items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : pricingError ? (
+            <div className="card mx-auto max-w-xl text-center">
+              <AlertCircle className="mx-auto mb-3 h-6 w-6 text-accent-yellow" />
+              <h3 className="mb-2 text-lg font-semibold">Pricing unavailable</h3>
+              <p className="text-sm text-foreground-muted">{pricingError}</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:gap-8 md:grid-cols-3">
+              {[
+                {
+                  key: 'trial',
+                  icon: Radio,
+                  title: 'Trial Access',
+                  price: 'Short demo trial',
+                  description:
+                    'Use a demo MT5 Receiver for a limited trial before funding a live workflow.',
+                  features: [
+                    'Demo MT5 accounts only',
+                    'Receiver EA access',
+                    'Live trading locked',
+                    'Sender account locked',
+                  ],
+                  cta: 'Start Trial',
+                  href: '/register',
+                  popular: false,
+                },
+                {
+                  key: 'invite',
+                  icon: Gift,
+                  title: 'Invite Benefits',
+                  price: 'Referral rewards',
+                  description:
+                    'Invite new users and apply eligible rewards toward a paid signal plan when available.',
+                  features: [
+                    'Invite new traders',
+                    'Earn account benefits when eligible',
+                    'Use rewards toward paid access',
+                    'Paid plan still controls Live and Sender access',
+                  ],
+                  cta: 'Create Account',
+                  href: '/register',
+                  popular: false,
+                },
+                (() => {
+                  const paidPlan = getMainPaidPlan(pricingTiers);
+
+                  return {
+                    key: 'paid',
+                    icon: Shield,
+                    title: paidPlan?.displayName || 'Paid Plan',
+                    price: paidPlan ? `$${paidPlan.priceMonthly.toFixed(0)}/month` : 'Paid access',
+                    description:
+                      paidPlan?.description ||
+                      'Unlock Live MT5 account access, Sender accounts, and higher Receiver capacity.',
+                    features: paidPlan
+                      ? getPlanFeatures(paidPlan)
+                      : [
+                          'Live MT5 account access',
+                          'Sender account access',
+                          'More Receiver accounts',
+                          'Higher signal allowance',
+                        ],
+                    cta: 'Choose Paid Plan',
+                    href: '/register',
+                    popular: true,
+                  };
+                })(),
+              ].map((plan, i) => (
+                <motion.div
+                  key={plan.key}
+                  className={`card relative ${plan.popular ? 'border-primary glow-primary' : ''}`}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: i * 0.1 }}
+                  viewport={{ once: true }}
                 >
-                  {plan.cta}
-                </Link>
-              </motion.div>
-            ))}
-          </div>
+                  {plan.popular && (
+                    <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-primary text-white text-sm font-medium rounded-full">
+                      Main Paid Plan
+                    </div>
+                  )}
+                  <plan.icon className="mb-4 h-10 w-10 text-primary" />
+                  <div className="mb-6">
+                    <h3 className="text-xl font-semibold mb-2">{plan.title}</h3>
+                    <p className="text-3xl font-bold">{plan.price}</p>
+                    <p className="text-foreground-muted mt-2">{plan.description}</p>
+                  </div>
+                  <ul className="space-y-3 mb-8">
+                    {plan.features.map((feature) => {
+                      const locked =
+                        feature.includes('locked') || feature === 'Demo accounts only';
+                      const Icon = locked ? Lock : Check;
+
+                      return (
+                        <li key={feature} className="flex items-start gap-2">
+                          <Icon
+                            className={`w-5 h-5 flex-shrink-0 ${
+                              locked ? 'text-foreground-muted' : 'text-accent-green'
+                            }`}
+                          />
+                          <span className="text-foreground-muted">{feature}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <Link
+                    href={plan.href}
+                    className={`block text-center py-3 rounded-lg font-semibold transition ${
+                      plan.popular
+                        ? 'bg-primary hover:bg-primary-hover text-white'
+                        : 'bg-background-elevated hover:bg-background-tertiary border border-border'
+                    }`}
+                  >
+                    {plan.cta}
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -336,7 +444,7 @@ export default function HomePage() {
           >
             <h2 className="text-2xl sm:text-4xl font-bold mb-3 sm:mb-4">Ready to Start Trading Smarter?</h2>
             <p className="text-base sm:text-xl text-foreground-muted mb-6 sm:mb-8">
-              Join thousands of traders receiving professional signals every day.
+              Create an account, connect a demo Receiver first, then upgrade when you need Sender or Live access.
             </p>
             <Link
               href="/register"

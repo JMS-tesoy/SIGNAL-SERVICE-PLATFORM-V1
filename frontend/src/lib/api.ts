@@ -280,12 +280,49 @@ export const otpApi = {
 // SUBSCRIPTION API
 // =============================================================================
 
+export interface PlanCapabilities {
+  canAddMasterAccount: boolean;
+  canAddSlaveAccount: boolean;
+  canUseDemoAccounts: boolean;
+  canUseLiveAccounts: boolean;
+  maxSlaveAccounts: number;
+  maxSignalsPerDay: number;
+  signalDelay: number;
+}
+
+export interface SubscriptionTierResponse {
+  id: string;
+  name: string;
+  displayName: string;
+  description: string | null;
+  priceMonthly: number;
+  priceYearly: number;
+  currency: string;
+  features: string[];
+  maxSignalsPerDay: number;
+  maxSlaveAccounts: number;
+  signalDelay: number;
+  capabilities: PlanCapabilities;
+  isPopular: boolean;
+}
+
+export interface CurrentSubscriptionResponse {
+  id: string;
+  status: string;
+  tier: SubscriptionTierResponse;
+  capabilities: PlanCapabilities;
+  billingCycle: string;
+  currentPeriodStart: string;
+  currentPeriodEnd: string;
+  cancelAtPeriodEnd: boolean;
+}
+
 export const subscriptionApi = {
   getTiers: () =>
-    apiFetch<{ tiers: any[] }>('/api/subscriptions/tiers'),
+    apiFetch<{ tiers: SubscriptionTierResponse[] }>('/api/subscriptions/tiers'),
 
   getCurrent: (token: string) =>
-    apiFetch<{ subscription: any }>('/api/subscriptions/current', { token }),
+    apiFetch<{ subscription: CurrentSubscriptionResponse | null }>('/api/subscriptions/current', { token }),
 
   createCheckout: (token: string, tierId: string, billingCycle: string) =>
     apiFetch<{ url: string }>('/api/subscriptions/checkout', {
@@ -334,28 +371,100 @@ export const subscriptionApi = {
 // SIGNAL API
 // =============================================================================
 
+export interface SignalExecutionResponse {
+  status: string;
+  executedAt: string | null;
+  executedPrice: number | null;
+  closePrice?: number | null;
+  profit?: number | null;
+  pnl?: number | null;
+  errorCode?: number | null;
+  errorMessage?: string | null;
+}
+
+export interface SignalHistoryResponse {
+  id: string;
+  action: string;
+  symbol: string;
+  type: 'BUY' | 'SELL';
+  volume: number;
+  price: number;
+  sl: number | null;
+  tp: number | null;
+  status: string;
+  createdAt: string;
+  execution: SignalExecutionResponse | null;
+}
+
+export interface SignalStatsResponse {
+  totalSignals: number;
+  executed: number;
+  failed: number;
+  skipped: number;
+  expired: number;
+  canceled: number;
+  pending: number;
+  bySymbol: Record<string, number>;
+  byAction: { OPEN: number; CLOSE: number; MODIFY: number };
+}
+
 export const signalApi = {
-  getHistory: (token: string, params?: { limit?: number; offset?: number; symbol?: string }) => {
+  getHistory: (
+    token: string,
+    params?: {
+      limit?: number;
+      offset?: number;
+      symbol?: string;
+      startDate?: string;
+      endDate?: string;
+      status?: string;
+      action?: string;
+      type?: string;
+    }
+  ) => {
     const query = new URLSearchParams();
     if (params?.limit) query.set('limit', params.limit.toString());
     if (params?.offset) query.set('offset', params.offset.toString());
     if (params?.symbol) query.set('symbol', params.symbol);
+    if (params?.startDate) query.set('startDate', params.startDate);
+    if (params?.endDate) query.set('endDate', params.endDate);
+    if (params?.status) query.set('status', params.status);
+    if (params?.action) query.set('action', params.action);
+    if (params?.type) query.set('type', params.type);
     
-    return apiFetch<{ signals: any[]; total: number }>(
+    return apiFetch<{
+      signals: SignalHistoryResponse[];
+      total: number;
+      limit: number;
+      offset: number;
+    }>(
       `/api/signals/history?${query.toString()}`,
       { token }
     );
   },
 
   getStats: (token: string, period?: string) =>
-    apiFetch<any>(
+    apiFetch<SignalStatsResponse>(
       `/api/signals/stats${period ? `?period=${period}` : ''}`,
       { token }
     ),
 
-  getPerformance: (token: string, period?: '7D' | '30D' | '90D') =>
-    apiFetch<{ data: { date: string; growth: number; drawdown: number }[]; period: string; message?: string }>(
-      `/api/signals/performance${period ? `?period=${period}` : ''}`,
+  getPerformance: (
+    token: string,
+    period?: '7D' | '30D' | '90D',
+    granularity?: 'hourly' | 'daily' | 'weekly' | 'monthly'
+  ) =>
+    apiFetch<{
+      data: { date: string; growth: number; drawdown: number }[];
+      period: string;
+      granularity?: 'hourly' | 'daily' | 'weekly' | 'monthly';
+      source?: 'ACCOUNT_SNAPSHOT' | 'SIGNAL_EXECUTION';
+      message?: string;
+    }>(
+      `/api/signals/performance?${new URLSearchParams({
+        ...(period ? { period } : {}),
+        ...(granularity ? { granularity } : {}),
+      }).toString()}`,
       { token }
     ),
 };

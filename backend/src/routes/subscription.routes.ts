@@ -18,8 +18,29 @@ import {
 import { authenticate } from '../middleware/auth.middleware.js';
 import { asyncHandler } from '../middleware/error.middleware.js';
 import { BillingCycle } from '@prisma/client';
+import {
+  getSubscriptionCapabilities,
+  getTierCapabilities,
+} from '../utils/subscription-capabilities.js';
 
 const router = Router();
+
+function normalizeTierFeatures(features: unknown) {
+  if (Array.isArray(features)) {
+    return features;
+  }
+
+  if (typeof features === 'string') {
+    try {
+      const parsed = JSON.parse(features);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
 
 // =============================================================================
 // GET ALL SUBSCRIPTION TIERS (Public)
@@ -37,10 +58,11 @@ router.get('/tiers', asyncHandler(async (req: Request, res: Response) => {
     priceMonthly: Number(tier.priceMonthly),
     priceYearly: Number(tier.priceYearly),
     currency: tier.currency,
-    features: Array.isArray(tier.features) ? tier.features : [],
+    features: normalizeTierFeatures(tier.features),
     maxSignalsPerDay: tier.maxSignalsPerDay,
     maxSlaveAccounts: tier.maxSlaveAccounts,
     signalDelay: tier.signalDelay,
+    capabilities: getTierCapabilities(tier),
     isPopular: tier.isPopular,
   }));
 
@@ -66,10 +88,21 @@ router.get('/current', authenticate, asyncHandler(async (req: Request, res: Resp
         id: subscription.tier.id,
         name: subscription.tier.name,
         displayName: subscription.tier.displayName,
-        features: Array.isArray(subscription.tier.features) ? subscription.tier.features : [],
+        description: subscription.tier.description,
+        priceMonthly: Number(subscription.tier.priceMonthly),
+        priceYearly: Number(subscription.tier.priceYearly),
+        currency: subscription.tier.currency,
+        features: normalizeTierFeatures(subscription.tier.features),
         maxSignalsPerDay: subscription.tier.maxSignalsPerDay,
         maxSlaveAccounts: subscription.tier.maxSlaveAccounts,
+        signalDelay: subscription.tier.signalDelay,
+        capabilities: getTierCapabilities(subscription.tier),
+        isPopular: subscription.tier.isPopular,
       },
+      capabilities: getSubscriptionCapabilities({
+        status: subscription.status,
+        tier: subscription.tier,
+      }),
       billingCycle: subscription.billingCycle,
       currentPeriodStart: subscription.currentPeriodStart,
       currentPeriodEnd: subscription.currentPeriodEnd,

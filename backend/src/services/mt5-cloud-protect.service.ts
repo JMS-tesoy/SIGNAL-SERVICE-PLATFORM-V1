@@ -511,6 +511,9 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
   if (permissionError) return { ...permissionError, ok: false };
 
   const executionStatus: ExecutionStatus = input.status === "FAILED" ? "FAILED" : "EXECUTED";
+  const executionPrice = input.status === "CLOSED"
+    ? input.closePrice ?? input.openPrice ?? undefined
+    : input.openPrice ?? input.closePrice ?? undefined;
 
   const matchingExecution = await prisma.signalExecution.findFirst({
     where: {
@@ -571,7 +574,9 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
       executedAt: executionStatus === "EXECUTED" ? now : null,
       acknowledgedAt: now,
       executedVolume: input.lotSize,
-      executedPrice: input.openPrice ?? undefined,
+      executedPrice: executionPrice,
+      closePrice: input.closePrice ?? undefined,
+      profit: input.profit ?? undefined,
       slaveTicket: input.ticket ? BigInt(input.ticket) : undefined,
       errorCode:
         typeof input.errorCode === "number"

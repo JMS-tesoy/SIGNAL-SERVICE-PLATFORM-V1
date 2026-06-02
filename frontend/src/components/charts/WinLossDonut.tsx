@@ -9,6 +9,7 @@ interface WinLossDonutProps {
   wins?: number;
   losses?: number;
   pending?: number;
+  pendingLabel?: string;
   isLoading?: boolean;
 }
 
@@ -17,6 +18,11 @@ const COLORS = {
   losses: '#ef4444',
   pending: '#f59e0b',
 };
+
+const countFormatter = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
 
 const renderActiveShape = (props: any) => {
   const {
@@ -64,6 +70,7 @@ export function WinLossDonut({
   wins = 0,
   losses = 0,
   pending = 0,
+  pendingLabel = 'Pending',
   isLoading
 }: WinLossDonutProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
@@ -74,12 +81,12 @@ export function WinLossDonut({
   const data = [
     { name: 'Executed', value: wins, color: COLORS.wins },
     { name: 'Failed', value: losses, color: COLORS.losses },
-    { name: 'Pending', value: pending, color: COLORS.pending },
+    { name: pendingLabel, value: pending, color: COLORS.pending },
   ].filter(d => d.value > 0);
 
   if (isLoading) {
     return (
-      <div className="h-[300px] flex items-center justify-center">
+      <div className="flex h-[280px] items-center justify-center sm:h-[300px]">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -92,18 +99,18 @@ export function WinLossDonut({
       transition={{ duration: 0.5, delay: 0.1 }}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4">
-        <div className="p-2.5 rounded-xl bg-accent-green/10">
-          <Target className="w-5 h-5 text-accent-green" />
+      <div className="mb-4 flex min-w-0 items-start gap-3">
+        <div className="flex-shrink-0 rounded-xl bg-accent-green/10 p-2.5">
+          <Target className="h-5 w-5 text-accent-green" />
         </div>
-        <div>
+        <div className="min-w-0">
           <h3 className="font-display text-lg font-semibold">Execution Rate</h3>
-          <p className="text-sm text-foreground-muted">{total} total signals</p>
+          <p className="text-sm text-foreground-muted">{countFormatter.format(total)} total signals</p>
         </div>
       </div>
 
       {/* Chart */}
-      <div className="h-[220px] relative">
+      <div className="relative h-[200px] sm:h-[220px]">
         <ResponsiveContainer width="100%" height="100%">
           <PieChart>
             <Pie
@@ -112,8 +119,8 @@ export function WinLossDonut({
               data={data}
               cx="50%"
               cy="50%"
-              innerRadius={60}
-              outerRadius={80}
+              innerRadius="48%"
+              outerRadius="64%"
               paddingAngle={3}
               dataKey="value"
               onMouseEnter={(_, index) => setActiveIndex(index)}
@@ -140,18 +147,18 @@ export function WinLossDonut({
             animate={{ scale: 1 }}
             transition={{ delay: 0.5, type: 'spring', stiffness: 200 }}
           >
-            <p className="font-display text-3xl font-bold text-accent-green">{winRate}%</p>
+            <p className="font-display text-2xl font-bold text-accent-green sm:text-3xl">{winRate}%</p>
             <p className="text-sm text-foreground-muted">Success</p>
           </motion.div>
         </div>
       </div>
 
       {/* Legend */}
-      <div className="flex items-center justify-center gap-4 mt-2">
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-2">
         {data.map((entry, index) => (
           <motion.div
             key={entry.name}
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+            className={`flex items-center gap-2 rounded-lg px-2 py-1.5 transition-all cursor-pointer sm:px-3 ${
               activeIndex === index ? 'bg-background-elevated' : ''
             }`}
             onMouseEnter={() => setActiveIndex(index)}
@@ -162,9 +169,9 @@ export function WinLossDonut({
               className="w-3 h-3 rounded-full"
               style={{ backgroundColor: entry.color }}
             />
-            <span className="text-sm">
+            <span className="text-xs sm:text-sm">
               <span className="text-foreground-muted">{entry.name}:</span>{' '}
-              <span className="font-semibold">{entry.value}</span>
+              <span className="font-semibold">{countFormatter.format(entry.value)}</span>
             </span>
           </motion.div>
         ))}

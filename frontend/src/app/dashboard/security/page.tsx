@@ -99,7 +99,10 @@ export default function SecurityPage() {
   };
 
   const fetchStatus = async () => {
-    if (!accessToken) return;
+    if (!accessToken) {
+      setIsLoading(false);
+      return;
+    }
 
     setIsLoading(true);
 
@@ -208,7 +211,10 @@ export default function SecurityPage() {
   };
 
   const fetchSessions = async () => {
-    if (!accessToken) return;
+    if (!accessToken) {
+      setSessionsLoading(false);
+      return;
+    }
 
     setSessionsLoading(true);
 

@@ -14,8 +14,28 @@ import {
 } from '../services/signal.service.js';
 import { authenticate, requireActiveSubscription } from '../middleware/auth.middleware.js';
 import { asyncHandler } from '../middleware/error.middleware.js';
+import { ExecutionStatus, SignalAction, SignalStatus, TradeType } from '@prisma/client';
 
 const router = Router();
+
+const SIGNAL_HISTORY_STATUSES = new Set<string>([
+  ...Object.values(SignalStatus),
+  ...Object.values(ExecutionStatus),
+]);
+const SIGNAL_HISTORY_ACTIONS = new Set<string>(Object.values(SignalAction));
+const SIGNAL_HISTORY_TYPES = new Set<string>(Object.values(TradeType));
+
+function normalizeSignalHistoryFilter(
+  value: unknown,
+  allowedValues: Set<string>
+) {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return undefined;
+  }
+
+  const normalizedValue = value.trim().toUpperCase();
+  return allowedValues.has(normalizedValue) ? normalizedValue : undefined;
+}
 
 function resolveRequestedAccountId(req: Request, res: Response, requestedAccountId?: string): string | null {
   const accountId = requestedAccountId || req.accountId;
@@ -175,6 +195,15 @@ router.get('/history', authenticate, asyncHandler(async (req: Request, res: Resp
     symbol: req.query.symbol as string,
     startDate: req.query.startDate ? new Date(req.query.startDate as string) : undefined,
     endDate: req.query.endDate ? new Date(req.query.endDate as string) : undefined,
+    status: normalizeSignalHistoryFilter(
+      req.query.status,
+      SIGNAL_HISTORY_STATUSES
+    ),
+    action: normalizeSignalHistoryFilter(
+      req.query.action,
+      SIGNAL_HISTORY_ACTIONS
+    ) as SignalAction | undefined,
+    type: normalizeSignalHistoryFilter(req.query.type, SIGNAL_HISTORY_TYPES) as TradeType | undefined,
   };
 
   const result = await getSignalHistory(req.user!.id, options);
@@ -194,7 +223,12 @@ router.get('/history', authenticate, asyncHandler(async (req: Request, res: Resp
       execution: s.executions[0] ? {
         status: s.executions[0].status,
         executedAt: s.executions[0].executedAt,
-        executedPrice: s.executions[0].executedPrice ? Number(s.executions[0].executedPrice) : null,
+        executedPrice: s.executions[0].executedPrice !== null ? Number(s.executions[0].executedPrice) : null,
+        closePrice: s.executions[0].closePrice !== null ? Number(s.executions[0].closePrice) : null,
+        profit: s.executions[0].profit !== null ? Number(s.executions[0].profit) : null,
+        pnl: s.executions[0].profit !== null ? Number(s.executions[0].profit) : null,
+        errorCode: s.executions[0].errorCode,
+        errorMessage: s.executions[0].errorMessage,
       } : null,
     })),
     total: result.total,
@@ -220,13 +254,21 @@ router.get('/stats', authenticate, asyncHandler(async (req: Request, res: Respon
 
 router.get('/performance', authenticate, asyncHandler(async (req: Request, res: Response) => {
   const period = (req.query.period as '7D' | '30D' | '90D') || '30D';
+  const granularity =
+    (req.query.granularity as 'hourly' | 'daily' | 'weekly' | 'monthly') || 'daily';
 
   // Validate period parameter
   if (!['7D', '30D', '90D'].includes(period)) {
     return res.status(400).json({ error: 'Invalid period. Use 7D, 30D, or 90D' });
   }
 
-  const result = await getPerformanceData(req.user!.id, period);
+  if (!['hourly', 'daily', 'weekly', 'monthly'].includes(granularity)) {
+    return res.status(400).json({
+      error: 'Invalid granularity. Use hourly, daily, weekly, or monthly',
+    });
+  }
+
+  const result = await getPerformanceData(req.user!.id, period, granularity);
 
   if (!result.success) {
     return res.status(500).json({ error: result.message });
@@ -235,6 +277,8 @@ router.get('/performance', authenticate, asyncHandler(async (req: Request, res: 
   res.json({
     data: result.data,
     period,
+    granularity,
+    source: result.source,
     message: result.message,
   });
 }));

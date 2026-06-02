@@ -1,8 +1,24 @@
-import type { FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { AlertCircle, Info, Loader2, X } from "lucide-react";
+import { AlertCircle, Building2, Info, Loader2, X } from "lucide-react";
 import type { AccountValidation, NewAccountForm } from "../types";
 import { ValidatedInput } from "./ValidatedInput";
+
+const BROKERS = [
+  { id: "icmarkets", name: "IC Markets", server: "ICMarketsSC-Demo" },
+  { id: "xm", name: "XM Global", server: "XMGlobal-MT5" },
+  { id: "pepperstone", name: "Pepperstone", server: "Pepperstone-Demo" },
+  { id: "fxpro", name: "FxPro", server: "FxPro-MT5" },
+  { id: "oanda", name: "OANDA", server: "OANDA-MT5" },
+  { id: "fxtm", name: "FXTM", server: "ForexTimeFXTM-Demo01" },
+  { id: "exness", name: "Exness", server: "Exness-MT5Real" },
+  { id: "roboforex", name: "RoboForex", server: "RoboForex-ECN" },
+  { id: "tickmill", name: "Tickmill", server: "Tickmill-Demo" },
+  { id: "admirals", name: "Admirals (Admiral Markets)", server: "AdmiralMarkets-Demo" },
+  { id: "avatrade", name: "AvaTrade", server: "AvaTrade-Demo" },
+  { id: "hfm", name: "HFM (HotForex)", server: "HFMarketsSV-Demo" },
+  { id: "other", name: "Other broker", server: "" },
+];
 
 type AddAccountModalProps = {
   open: boolean;
@@ -35,6 +51,23 @@ export function AddAccountModal({
   onChange,
   onError,
 }: AddAccountModalProps) {
+  const matchedBrokerId =
+    BROKERS.find(
+      (broker) =>
+        broker.id !== "other" &&
+        broker.name === newAccount.broker &&
+        broker.server === newAccount.server
+    )?.id ?? "";
+  const [brokerPreset, setBrokerPreset] = useState(matchedBrokerId);
+  const selectedBroker = brokerPreset || matchedBrokerId;
+  const showManualBroker = selectedBroker === "other";
+
+  useEffect(() => {
+    if (!open) {
+      setBrokerPreset("");
+    }
+  }, [open]);
+
   return (
     <AnimatePresence>
       {open && (
@@ -49,7 +82,7 @@ export function AddAccountModal({
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             exit={{ scale: 0.95, opacity: 0 }}
-            className="bg-background-secondary rounded-xl p-6 w-full max-w-md border border-border"
+            className="max-h-[calc(100vh-2rem)] w-full max-w-md overflow-y-auto rounded-xl border border-border bg-background-secondary p-6"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-6">
@@ -150,15 +183,75 @@ export function AddAccountModal({
                 </p>
               </div>
 
-              <ValidatedInput
-                id="mt5-broker"
-                name="broker"
-                label="Broker (Optional)"
-                value={newAccount.broker}
-                error={validation.broker}
-                placeholder="e.g., IC Markets"
-                onChange={(value) => onChange({ ...newAccount, broker: value })}
-              />
+              <div>
+                <label htmlFor="mt5-broker-select" className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <Building2 className="h-4 w-4 text-primary" />
+                  Broker
+                </label>
+                <select
+                  id="mt5-broker-select"
+                  name="brokerPreset"
+                  value={selectedBroker}
+                  onChange={(event) => {
+                    const broker = BROKERS.find((item) => item.id === event.target.value);
+
+                    if (!broker) {
+                      setBrokerPreset("");
+                      onChange({ ...newAccount, broker: "", server: "" });
+                      return;
+                    }
+
+                    if (broker.id === "other") {
+                      setBrokerPreset("other");
+                      onChange({ ...newAccount, broker: "", server: "" });
+                      return;
+                    }
+
+                    setBrokerPreset(broker.id);
+                    onChange({
+                      ...newAccount,
+                      broker: broker.name,
+                      server: broker.server,
+                    });
+                  }}
+                  className="input"
+                >
+                  <option value="">Select a broker</option>
+                  {BROKERS.map((broker) => (
+                    <option key={broker.id} value={broker.id}>
+                      {broker.name}
+                    </option>
+                  ))}
+                </select>
+                {selectedBroker && selectedBroker !== "other" ? (
+                  <p className="mt-2 text-xs text-foreground-muted">
+                    Default server: <span className="font-mono text-foreground-subtle">{newAccount.server}</span>
+                  </p>
+                ) : selectedBroker === "other" ? (
+                  <p className="mt-2 text-xs text-foreground-muted">
+                    Choose Other broker to enter the exact broker and server from your MT5 terminal.
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs text-foreground-muted">
+                    Select a popular broker to fill the default server, or choose Other broker for manual entry.
+                  </p>
+                )}
+              </div>
+
+              {showManualBroker && (
+                <ValidatedInput
+                  id="mt5-broker"
+                  name="broker"
+                  label="Broker (Optional)"
+                  value={newAccount.broker}
+                  error={validation.broker}
+                  placeholder="e.g., IC Markets"
+                  onChange={(value) => {
+                    setBrokerPreset("other");
+                    onChange({ ...newAccount, broker: value });
+                  }}
+                />
+              )}
 
               <ValidatedInput
                 id="mt5-server"

@@ -172,9 +172,6 @@ export function AccountCard({
   const eaTypeLabel = isMasterAccount ? "Sender EA" : "Receiver EA";
   const licenseValidity = getLicenseValidity(account as AccountWithLicense, eaTypeLabel);
   const mt5WebRequestUrl = "https://api.tesoy.online";
-  const cloudProtectEndpoint = isMasterAccount
-    ? `${mt5WebRequestUrl}/api/mt5/license/verify`
-    : `${mt5WebRequestUrl}/api/mt5/signals/pull`;
   const selectedMasterId =
     selectedMasterIds[account.id] ?? account.allowedMasterAccountId ?? "";
   const hasSavedMasterAssignment =
@@ -388,7 +385,7 @@ export function AccountCard({
           <div>
             <p className="text-sm font-semibold">{eaTypeLabel} configuration</p>
             <p className="text-xs text-foreground-muted">
-              Copy these values into MT5. The EA connects through Cloud Protect using your production API domain.
+              Copy the backend URL into the EA. The EA builds the Cloud Protect endpoints automatically.
             </p>
           </div>
           {!account.hasApiKey && !keyForThisAccount && (
@@ -401,16 +398,10 @@ export function AccountCard({
           <CopyPill label="MT5 id" value={account.accountId} onCopy={onCopy} copiedValue={copiedValue} />
           <CopyPill label="Broker" value={account.broker || "Not set"} onCopy={onCopy} copiedValue={copiedValue} />
           <CopyPill label="Server" value={account.server || "Not set"} onCopy={onCopy} copiedValue={copiedValue} />
-          <CopyPill label="WebRequest URL" value={mt5WebRequestUrl} onCopy={onCopy} copiedValue={copiedValue} />
-          <CopyPill
-            label={isMasterAccount ? "License verify URL" : "Signal pull URL"}
-            value={cloudProtectEndpoint}
-            onCopy={onCopy}
-            copiedValue={copiedValue}
-          />
+          <CopyPill label="Allow Web Request URL" value={mt5WebRequestUrl} onCopy={onCopy} copiedValue={copiedValue} />
         </div>
         <p className="mt-3 text-xs leading-5 text-foreground-muted">
-          In MT5, add only <span className="font-mono text-foreground">{mt5WebRequestUrl}</span> under Tools → Options → Expert Advisors → Allow WebRequest for listed URL.
+          In MT5, add the same base URL under Tools → Options → Expert Advisors → Allow WebRequest for listed URL.
         </p>
       </div>
 

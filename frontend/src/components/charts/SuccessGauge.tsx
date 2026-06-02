@@ -42,7 +42,7 @@ export function SuccessGauge({ rate = 0, isLoading }: SuccessGaugeProps) {
   };
 
   // SVG arc calculations
-  const size = 200;
+  const size = 190;
   const strokeWidth = 16;
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * Math.PI; // Half circle
@@ -50,7 +50,7 @@ export function SuccessGauge({ rate = 0, isLoading }: SuccessGaugeProps) {
 
   if (isLoading) {
     return (
-      <div className="h-[300px] flex items-center justify-center">
+      <div className="flex h-[280px] items-center justify-center sm:h-[300px]">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -61,21 +61,21 @@ export function SuccessGauge({ rate = 0, isLoading }: SuccessGaugeProps) {
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay: 0.3 }}
-      className="flex flex-col items-center"
+      className="flex min-w-0 flex-col items-center"
     >
       {/* Header */}
-      <div className="flex items-center gap-3 mb-4 self-start">
-        <div className="p-2.5 rounded-xl bg-accent-cyan/10">
-          <Gauge className="w-5 h-5 text-accent-cyan" />
+      <div className="mb-4 flex min-w-0 items-start gap-3 self-start">
+        <div className="flex-shrink-0 rounded-xl bg-accent-cyan/10 p-2.5">
+          <Gauge className="h-5 w-5 text-accent-cyan" />
         </div>
-        <div>
+        <div className="min-w-0">
           <h3 className="font-display text-lg font-semibold">Success Rate</h3>
           <p className="text-sm text-foreground-muted">Overall performance</p>
         </div>
       </div>
 
       {/* Gauge */}
-      <div className="relative" style={{ width: size, height: size / 2 + 40 }}>
+      <div className="relative max-w-full" style={{ width: size, height: size / 2 + 40 }}>
         <svg
           width={size}
           height={size / 2 + 20}
@@ -145,7 +145,7 @@ export function SuccessGauge({ rate = 0, isLoading }: SuccessGaugeProps) {
         {/* Center content */}
         <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 text-center">
           <motion.p
-            className={`font-display text-4xl font-bold ${getColorClass(rate)}`}
+            className={`font-display text-3xl font-bold sm:text-4xl ${getColorClass(rate)}`}
             initial={{ opacity: 0, scale: 0.5 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.8, type: 'spring', stiffness: 200 }}
@@ -165,22 +165,22 @@ export function SuccessGauge({ rate = 0, isLoading }: SuccessGaugeProps) {
 
       {/* Stats bar */}
       <motion.div
-        className="flex items-center justify-center gap-6 mt-4 w-full"
+        className="mt-4 flex w-full flex-wrap items-center justify-center gap-x-5 gap-y-2"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1.2 }}
       >
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-accent-green" />
-          <span className="text-sm text-foreground-muted">&gt;70% Great</span>
+          <span className="text-xs text-foreground-muted sm:text-sm">&gt;70% Great</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-accent-yellow" />
-          <span className="text-sm text-foreground-muted">50-70% Fair</span>
+          <span className="text-xs text-foreground-muted sm:text-sm">50-70% Fair</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-accent-red" />
-          <span className="text-sm text-foreground-muted">&lt;50% Low</span>
+          <span className="text-xs text-foreground-muted sm:text-sm">&lt;50% Low</span>
         </div>
       </motion.div>
     </motion.div>

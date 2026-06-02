@@ -61,7 +61,7 @@ export default function DashboardLayout({
     setUser,
     setLoading,
   } = useAuthStore();
-  const { sidebarOpen, toggleSidebar } = useUIStore();
+  const { sidebarOpen, toggleSidebar, setSidebarOpen } = useUIStore();
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const hydratedTokenRef = useRef<string | null>(null);
@@ -122,6 +122,18 @@ export default function DashboardLayout({
     }
   }, [accessToken, isAuthenticated, isLoading, router]);
 
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+    const syncSidebarForViewport = () => {
+      setSidebarOpen(mediaQuery.matches);
+    };
+
+    syncSidebarForViewport();
+    mediaQuery.addEventListener("change", syncSidebarForViewport);
+
+    return () => mediaQuery.removeEventListener("change", syncSidebarForViewport);
+  }, [setSidebarOpen]);
+
   const handleLogout = () => {
     logout();
     router.replace("/login");
@@ -139,7 +151,7 @@ export default function DashboardLayout({
     <div className="min-h-screen bg-background">
       {/* Sidebar */}
       <aside
-        className={`fixed top-0 left-0 h-full bg-background-secondary border-r border-border z-40 transition-all duration-300 ${
+        className={`fixed top-0 left-0 z-40 flex h-dvh flex-col bg-background-secondary border-r border-border transition-all duration-300 ${
           sidebarOpen
             ? "translate-x-0 w-64"
             : "-translate-x-full lg:translate-x-0 lg:w-20"
@@ -174,7 +186,7 @@ export default function DashboardLayout({
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 space-y-2">
+        <nav className="flex-1 space-y-2 overflow-y-auto p-3 sm:p-4 pb-4">
           {navItems.map((item) => {
             const isActive = pathname === item.href;
             return (
@@ -253,20 +265,20 @@ export default function DashboardLayout({
 
         {/* User section at bottom */}
         {sidebarOpen && (
-          <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-border">
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-background-elevated">
-              <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center overflow-hidden">
+          <div className="shrink-0 border-t border-border p-3 sm:p-4">
+            <div className="flex min-w-0 items-center gap-3 rounded-xl bg-background-elevated p-3">
+              <div className="h-10 w-10 flex-shrink-0 rounded-full bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center overflow-hidden">
                 {user?.avatar ? (
                   <img
                     src={user.avatar}
                     alt="Avatar"
-                    className="w-full h-full object-cover"
+                    className="h-full w-full object-cover"
                   />
                 ) : (
                   <User className="w-5 h-5 text-white" />
                 )}
               </div>
-              <div className="flex-1 min-w-0">
+              <div className="min-w-0 flex-1">
                 <p className="font-medium truncate">{user?.name || "Trader"}</p>
                 <p className="text-xs text-foreground-muted truncate">
                   {user?.email}
@@ -320,7 +332,7 @@ export default function DashboardLayout({
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 10 }}
-                    className="absolute right-0 top-full mt-2 w-80 overflow-hidden rounded-xl border border-border bg-background-elevated shadow-xl"
+                className="absolute right-0 top-full mt-2 w-[calc(100vw-1.5rem)] max-w-[20rem] overflow-hidden rounded-xl border border-border bg-background-elevated shadow-xl"
                   >
                     <div className="border-b border-border p-4">
                       <div className="flex items-start justify-between gap-4">
@@ -488,7 +500,7 @@ export default function DashboardLayout({
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 10 }}
-                    className="absolute right-0 top-full mt-2 w-48 bg-background-elevated border border-border rounded-xl shadow-xl overflow-hidden"
+                    className="absolute right-0 top-full mt-2 w-[calc(100vw-1.5rem)] max-w-[12rem] bg-background-elevated border border-border rounded-xl shadow-xl overflow-hidden"
                   >
                     <div className="p-3 border-b border-border">
                       <p className="font-medium">{user?.name || "Trader"}</p>
@@ -524,7 +536,7 @@ export default function DashboardLayout({
         </header>
 
         {/* Page content */}
-        <main className="p-3 sm:p-6">{children}</main>
+        <main className="min-w-0 overflow-x-hidden p-3 sm:p-5 xl:p-6">{children}</main>
       </div>
 
       {/* Mobile sidebar overlay */}

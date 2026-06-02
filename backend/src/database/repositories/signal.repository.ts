@@ -138,10 +138,28 @@ export function findExecutionsForStatistics(userId: string, startDate: Date) {
   });
 }
 
+export function findSignalsForStatistics(input: {
+  where: Prisma.SignalWhereInput;
+  userId: string;
+}) {
+  return prisma.signal.findMany({
+    where: input.where,
+    include: {
+      executions: { where: { userId: input.userId } },
+    },
+  });
+}
+
 export function findUserMt5AccountIds(userId: string) {
   return prisma.mT5Account.findMany({
     where: { userId },
-    select: { id: true },
+    select: {
+      id: true,
+      balance: true,
+      equity: true,
+      profit: true,
+      lastHeartbeat: true,
+    },
   });
 }
 
@@ -162,6 +180,27 @@ export function findInitialAccountSnapshot(mt5AccountIds: string[]) {
   return prisma.accountSnapshot.findFirst({
     where: { mt5AccountId: { in: mt5AccountIds } },
     orderBy: { snapshotDate: "asc" },
+  });
+}
+
+export function findExecutedTradeSignalsForPerformance(userId: string) {
+  return prisma.signal.findMany({
+    where: {
+      AND: [
+        { OR: [{ providerId: userId }, { executions: { some: { userId } } }] },
+        {
+          OR: [
+            { status: "EXECUTED" },
+            { executions: { some: { userId, status: "EXECUTED" } } },
+          ],
+        },
+      ],
+      action: { in: ["OPEN", "CLOSE"] },
+    },
+    include: {
+      executions: { where: { userId } },
+    },
+    orderBy: { createdAt: "asc" },
   });
 }
 
@@ -343,6 +382,8 @@ export function acknowledgePendingExecution(input: {
   details?: {
     executedVolume?: number;
     executedPrice?: number;
+    closePrice?: number | null;
+    profit?: number | null;
     slippage?: number;
     slaveTicket?: number;
     errorCode?: number;
@@ -365,6 +406,8 @@ export function acknowledgePendingExecution(input: {
       acknowledgedAt: new Date(),
       executedVolume: details?.executedVolume,
       executedPrice: details?.executedPrice,
+      closePrice: details?.closePrice,
+      profit: details?.profit,
       slippage: details?.slippage,
       slaveTicket: details?.slaveTicket ? BigInt(details.slaveTicket) : null,
       errorCode: details?.errorCode,
@@ -393,7 +436,7 @@ export async function createPendingExecutionsForActiveSubscriberSlaveAccounts(
 ) {
   const subscribers = await prisma.subscription.findMany({
     where: {
-      status: "ACTIVE",
+      status: { in: ["ACTIVE", "TRIALING"] },
       user: {
         status: "ACTIVE",
         // Provider exclusion removed for testing - admin can receive own signals.

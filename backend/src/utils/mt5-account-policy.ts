@@ -131,11 +131,11 @@ export function getMt5AccountEligibilityError(input: {
   }
 
   if (accountType === "MASTER") {
-    if (!subscription || !hasSignalActiveSubscription(subscription)) {
+    if (!subscription || getSubscriptionStatus(subscription) !== "ACTIVE") {
       return "An active paid subscription is required to add master accounts.";
     }
 
-    if (!isTrialSubscription(subscription) && subscription.tier.name === "free") {
+    if (subscription.tier.name === "free") {
       return "Master Signal Provider accounts require a paid plan.";
     }
 

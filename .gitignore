@@ -23,6 +23,7 @@ folder-structure*.txt
 
 # Local documentation drafts
 docs/*
+docs/API-GATEWAY-SCALING-PLAN.md
 DEPLOYMENT.md
 
 # Local EA source versions

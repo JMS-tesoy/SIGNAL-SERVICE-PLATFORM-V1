@@ -207,6 +207,8 @@ model SignalExecution {
   status         ExecutionStatus @default(PENDING)
   executedVolume Decimal?        @db.Decimal(10, 2)
   executedPrice  Decimal?        @db.Decimal(15, 5)
+  closePrice     Decimal?        @db.Decimal(15, 5)
+  profit         Decimal?        @db.Decimal(15, 2)
   slippage       Decimal?        @db.Decimal(15, 5)
   slaveTicket    BigInt?
   errorCode      Int?

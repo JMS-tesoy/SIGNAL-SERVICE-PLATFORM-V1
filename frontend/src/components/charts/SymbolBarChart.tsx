@@ -30,6 +30,15 @@ const GRADIENT_COLORS = [
   { start: '#ec4899', end: '#f472b6' },
 ];
 
+const countFormatter = new Intl.NumberFormat('en-US', {
+  notation: 'compact',
+  maximumFractionDigits: 1,
+});
+
+function formatSymbol(symbol: string) {
+  return symbol.length > 10 ? `${symbol.slice(0, 9)}…` : symbol;
+}
+
 const CustomTooltip = ({ active, payload }: any) => {
   if (active && payload && payload.length) {
     return (
@@ -40,7 +49,7 @@ const CustomTooltip = ({ active, payload }: any) => {
       >
         <p className="font-semibold text-foreground">{payload[0].payload.symbol}</p>
         <p className="text-sm text-foreground-muted">
-          <span className="text-primary font-semibold">{payload[0].value}</span> signals
+          <span className="text-primary font-semibold">{countFormatter.format(payload[0].value)}</span> signals
         </p>
       </motion.div>
     );
@@ -60,7 +69,7 @@ export function SymbolBarChart({ data = emptyData, isLoading }: SymbolBarChartPr
 
   if (isLoading) {
     return (
-      <div className="h-[300px] flex items-center justify-center">
+      <div className="flex h-[280px] items-center justify-center sm:h-[300px]">
         <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     );
@@ -73,11 +82,11 @@ export function SymbolBarChart({ data = emptyData, isLoading }: SymbolBarChartPr
       transition={{ duration: 0.5, delay: 0.2 }}
     >
       {/* Header */}
-      <div className="flex items-center gap-3 mb-6">
-        <div className="p-2.5 rounded-xl bg-accent-purple/10">
-          <BarChart3 className="w-5 h-5 text-accent-purple" />
+      <div className="mb-5 flex min-w-0 items-start gap-3 sm:mb-6">
+        <div className="flex-shrink-0 rounded-xl bg-accent-purple/10 p-2.5">
+          <BarChart3 className="h-5 w-5 text-accent-purple" />
         </div>
-        <div>
+        <div className="min-w-0">
           <h3 className="font-display text-lg font-semibold">Signals by Symbol</h3>
           <p className="text-sm text-foreground-muted">Top {hasData ? chartData.length : 0} trading pairs</p>
         </div>
@@ -85,7 +94,7 @@ export function SymbolBarChart({ data = emptyData, isLoading }: SymbolBarChartPr
 
       {/* Empty state */}
       {!hasData && (
-        <div className="h-[240px] flex items-center justify-center text-foreground-muted">
+        <div className="flex h-[220px] items-center justify-center text-foreground-muted sm:h-[240px]">
           <div className="text-center">
             <BarChart3 className="w-12 h-12 mx-auto mb-3 opacity-30" />
             <p>No signal data yet</p>
@@ -95,12 +104,12 @@ export function SymbolBarChart({ data = emptyData, isLoading }: SymbolBarChartPr
 
       {/* Chart */}
       {hasData && (
-      <div className="h-[240px]">
+      <div className="h-[220px] sm:h-[240px]">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={chartData}
             layout="vertical"
-            margin={{ top: 0, right: 20, left: 10, bottom: 0 }}
+            margin={{ top: 0, right: 8, left: 0, bottom: 0 }}
           >
             <defs>
               {GRADIENT_COLORS.map((color, index) => (
@@ -129,14 +138,17 @@ export function SymbolBarChart({ data = emptyData, isLoading }: SymbolBarChartPr
               tickLine={false}
               tick={{ fill: 'var(--foreground-subtle)', fontSize: 12 }}
               domain={[0, maxValue * 1.1]}
+              tickFormatter={(value) => countFormatter.format(Number(value))}
+              width={36}
             />
             <YAxis
               type="category"
               dataKey="symbol"
               axisLine={false}
               tickLine={false}
-              tick={{ fill: 'var(--foreground-muted)', fontSize: 13, fontWeight: 500 }}
-              width={70}
+              tick={{ fill: 'var(--foreground-muted)', fontSize: 12, fontWeight: 500 }}
+              tickFormatter={formatSymbol}
+              width={68}
             />
             <Tooltip content={<CustomTooltip />} cursor={{ fill: 'var(--background-elevated)', opacity: 0.5 }} />
             <Bar

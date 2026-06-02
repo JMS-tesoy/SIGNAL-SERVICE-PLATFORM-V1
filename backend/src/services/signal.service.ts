@@ -3,7 +3,7 @@
 // =============================================================================
 
 import { checkSignalLimit } from './subscription.service.js';
-import { Prisma, SignalAction, TradeType, ExecutionStatus } from '@prisma/client';
+import { Prisma, SignalAction, SignalStatus, TradeType, ExecutionStatus } from '@prisma/client';
 import { signalRepository } from '../database/repositories/index.js';
 
 // =============================================================================
@@ -136,11 +136,10 @@ export async function getPendingSignals(
   accountId: string
 ): Promise<PendingSignalsResult> {
   try {
-    // BYPASSED FOR TESTING - was: checkSignalLimit(userId)
-    // const limitCheck = await checkSignalLimit(userId);
-    // if (!limitCheck.allowed) {
-    //   return { success: true, signals: [], message: 'Daily signal limit reached' };
-    // }
+    const limitCheck = await checkSignalLimit(userId);
+    if (!limitCheck.allowed) {
+      return { success: true, signals: [], message: 'Daily signal limit reached' };
+    }
 
     const mt5Account = await signalRepository.findSlaveAccountByUserAndAccountId(
       userId,
@@ -155,9 +154,7 @@ export async function getPendingSignals(
     await signalRepository.markAccountConnected(mt5Account.id);
 
     const subscription = await signalRepository.findUserSubscriptionWithTier(userId);
-    void subscription;
-
-    const signalDelay = 0; // Bypassed for testing - was: subscription?.tier.signalDelay || 0
+    const signalDelay = subscription?.tier.signalDelay || 0;
     const delayedTime = new Date(Date.now() - signalDelay * 1000);
 
     const executions = await signalRepository.findPendingExecutionsForSlaveAccount(
@@ -193,6 +190,8 @@ export async function getPendingSignals(
 // =============================================================================
 
 const TERMINAL_STATUSES: ExecutionStatus[] = ['EXECUTED', 'FAILED', 'EXPIRED', 'SKIPPED'];
+const SIGNAL_HISTORY_SIGNAL_STATUSES = new Set<string>(Object.values(SignalStatus));
+const SIGNAL_HISTORY_EXECUTION_STATUSES = new Set<string>(Object.values(ExecutionStatus));
 
 function normalizeOptionalPrice(value: number | null | undefined) {
   if (value === null || value === undefined || value === 0) {
@@ -376,15 +375,46 @@ async function captureBalanceSnapshot(
 
 export async function getSignalHistory(
   userId: string,
-  options: { limit?: number; offset?: number; symbol?: string; startDate?: Date; endDate?: Date } = {}
+  options: {
+    limit?: number;
+    offset?: number;
+    symbol?: string;
+    startDate?: Date;
+    endDate?: Date;
+    status?: string;
+    action?: SignalAction;
+    type?: TradeType;
+  } = {}
 ) {
-  const { limit = 50, offset = 0, symbol, startDate, endDate } = options;
+  const { limit = 50, offset = 0, symbol, startDate, endDate, status, action, type } = options;
 
   const where: Prisma.SignalWhereInput = {
     OR: [{ providerId: userId }, { executions: { some: { userId } } }],
   };
 
-  if (symbol) where.symbol = symbol;
+  if (symbol) where.symbol = { contains: symbol, mode: 'insensitive' };
+  if (action) where.action = action;
+  if (type) where.type = type;
+  if (status) {
+    const statusFilters: Prisma.SignalWhereInput[] = [];
+
+    if (SIGNAL_HISTORY_SIGNAL_STATUSES.has(status)) {
+      statusFilters.push({ status: status as SignalStatus });
+    }
+
+    if (SIGNAL_HISTORY_EXECUTION_STATUSES.has(status)) {
+      statusFilters.push({
+        executions: { some: { userId, status: status as ExecutionStatus } },
+      });
+    }
+
+    if (statusFilters.length > 0) {
+      where.AND = [
+        ...(Array.isArray(where.AND) ? where.AND : []),
+        { OR: statusFilters },
+      ];
+    }
+  }
   if (startDate || endDate) {
     where.createdAt = {};
     if (startDate) where.createdAt.gte = startDate;
@@ -416,24 +446,38 @@ export async function getSignalStatistics(userId: string, period: 'day' | 'week'
     case 'all': startDate = new Date(0); break;
   }
 
-  const executions = await signalRepository.findExecutionsForStatistics(
+  const signals = await signalRepository.findSignalsForStatistics({
+    where: {
+      OR: [{ providerId: userId }, { executions: { some: { userId } } }],
+      createdAt: { gte: startDate },
+    },
     userId,
-    startDate
-  );
+  });
 
   const stats = {
-    totalSignals: executions.length,
-    executed: executions.filter((e) => e.status === 'EXECUTED').length,
-    failed: executions.filter((e) => e.status === 'FAILED').length,
-    skipped: executions.filter((e) => e.status === 'SKIPPED').length,
-    expired: executions.filter((e) => e.status === 'EXPIRED').length,
+    totalSignals: signals.length,
+    executed: 0,
+    failed: 0,
+    skipped: 0,
+    expired: 0,
+    canceled: 0,
+    pending: 0,
     bySymbol: {} as Record<string, number>,
     byAction: { OPEN: 0, CLOSE: 0, MODIFY: 0 },
   };
 
-  executions.forEach((exec) => {
-    stats.bySymbol[exec.signal.symbol] = (stats.bySymbol[exec.signal.symbol] || 0) + 1;
-    stats.byAction[exec.signal.action]++;
+  signals.forEach((signal) => {
+    const status = String(signal.executions[0]?.status || signal.status);
+
+    if (status === 'EXECUTED') stats.executed += 1;
+    else if (status === 'FAILED') stats.failed += 1;
+    else if (status === 'SKIPPED') stats.skipped += 1;
+    else if (status === 'EXPIRED') stats.expired += 1;
+    else if (status === 'CANCELED') stats.canceled += 1;
+    else stats.pending += 1;
+
+    stats.bySymbol[signal.symbol] = (stats.bySymbol[signal.symbol] || 0) + 1;
+    stats.byAction[signal.action]++;
   });
 
   return stats;
@@ -449,10 +493,214 @@ interface PerformanceDataPoint {
   drawdown: number;
 }
 
+type PerformanceSource = 'ACCOUNT_SNAPSHOT' | 'SIGNAL_EXECUTION';
+type PerformanceGranularity = 'hourly' | 'daily' | 'weekly' | 'monthly';
+
+type PerformanceAggregate = {
+  totalBalance: number;
+  totalEquity: number;
+  peakEquity: number;
+};
+
+function getDateKey(date: Date) {
+  return date.toISOString().split('T')[0];
+}
+
+function getPerformanceBucketDate(date: Date, granularity: PerformanceGranularity) {
+  const bucketDate = new Date(date);
+
+  if (granularity === 'hourly') {
+    bucketDate.setMinutes(0, 0, 0);
+    return bucketDate;
+  }
+
+  bucketDate.setHours(0, 0, 0, 0);
+
+  if (granularity === 'weekly') {
+    const day = bucketDate.getDay();
+    const daysFromMonday = day === 0 ? 6 : day - 1;
+    bucketDate.setDate(bucketDate.getDate() - daysFromMonday);
+  }
+
+  if (granularity === 'monthly') {
+    bucketDate.setDate(1);
+  }
+
+  return bucketDate;
+}
+
+function getPerformanceBucketKey(date: Date, granularity: PerformanceGranularity) {
+  const bucketDate = getPerformanceBucketDate(date, granularity);
+
+  if (granularity === 'hourly') {
+    return bucketDate.toISOString().slice(0, 13);
+  }
+
+  if (granularity === 'monthly') {
+    return bucketDate.toISOString().slice(0, 7);
+  }
+
+  return getDateKey(bucketDate);
+}
+
+function formatPerformanceBucketLabel(bucketKey: string, granularity: PerformanceGranularity) {
+  const bucketDate =
+    granularity === 'hourly'
+      ? new Date(`${bucketKey}:00:00.000Z`)
+      : granularity === 'monthly'
+        ? new Date(`${bucketKey}-01T00:00:00.000Z`)
+        : new Date(`${bucketKey}T00:00:00.000Z`);
+
+  if (granularity === 'hourly') {
+    return bucketDate.toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+    });
+  }
+
+  if (granularity === 'weekly') {
+    return `Week of ${bucketDate.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    })}`;
+  }
+
+  if (granularity === 'monthly') {
+    return bucketDate.toLocaleDateString('en-US', {
+      month: 'short',
+      year: 'numeric',
+    });
+  }
+
+  return bucketDate.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+function mergePerformanceAggregate(
+  dateMap: Map<string, PerformanceAggregate>,
+  dateKey: string,
+  values: PerformanceAggregate
+) {
+  const existing = dateMap.get(dateKey);
+
+  if (existing) {
+    existing.totalBalance += values.totalBalance;
+    existing.totalEquity += values.totalEquity;
+    existing.peakEquity = Math.max(existing.peakEquity, values.peakEquity);
+    return;
+  }
+
+  dateMap.set(dateKey, values);
+}
+
+function getSignalPerformanceKey(signal: {
+  mt5AccountId: string | null;
+  masterTicket: bigint | null;
+  masterPositionId: bigint | null;
+  symbol: string;
+}) {
+  const positionId = signal.masterPositionId?.toString();
+  const ticket = signal.masterTicket?.toString();
+
+  if (!positionId && !ticket) {
+    return null;
+  }
+
+  return [
+    signal.mt5AccountId || 'account',
+    signal.symbol,
+    positionId || ticket,
+  ].join(':');
+}
+
+function getExecutableSignalPrice(signal: {
+  price: Prisma.Decimal;
+  providerId: string;
+  executions: { executedPrice: Prisma.Decimal | null }[];
+}, userId: string) {
+  const executedPrice = signal.executions[0]?.executedPrice;
+  if (executedPrice) {
+    return Number(executedPrice);
+  }
+
+  if (signal.providerId === userId) {
+    return Number(signal.price);
+  }
+
+  return null;
+}
+
+async function buildSignalExecutionPerformanceData(
+  userId: string,
+  startDate: Date,
+  granularity: PerformanceGranularity
+): Promise<PerformanceDataPoint[]> {
+  const signals = await signalRepository.findExecutedTradeSignalsForPerformance(userId);
+  const openSignals = new Map<string, { price: number; type: TradeType }>();
+  const bucketResults = new Map<string, number>();
+
+  for (const signal of signals) {
+    const key = getSignalPerformanceKey(signal);
+    if (!key) continue;
+
+    const price = getExecutableSignalPrice(signal, userId);
+    if (!price || price <= 0) continue;
+
+    if (signal.action === 'OPEN') {
+      openSignals.set(key, { price, type: signal.type });
+      continue;
+    }
+
+    const openSignal = openSignals.get(key);
+    if (!openSignal) continue;
+
+    const closedAt = signal.executions[0]?.executedAt || signal.createdAt;
+    if (closedAt < startDate) continue;
+
+    const result =
+      openSignal.type === 'BUY'
+        ? ((price - openSignal.price) / openSignal.price) * 100
+        : ((openSignal.price - price) / openSignal.price) * 100;
+
+    const bucketKey = getPerformanceBucketKey(closedAt, granularity);
+    bucketResults.set(bucketKey, (bucketResults.get(bucketKey) || 0) + result);
+    openSignals.delete(key);
+  }
+
+  const data: PerformanceDataPoint[] = [];
+  let cumulativeResult = 0;
+  let runningPeak = 0;
+
+  for (const [bucketKey, result] of [...bucketResults.entries()].sort(([left], [right]) =>
+    left.localeCompare(right)
+  )) {
+    const normalizedResult = Math.abs(result) < 0.0001 ? 0 : result;
+    cumulativeResult += normalizedResult;
+    runningPeak = Math.max(runningPeak, cumulativeResult);
+
+    data.push({
+      date: formatPerformanceBucketLabel(bucketKey, granularity),
+      growth: Math.round(cumulativeResult * 100) / 100,
+      drawdown: Math.round((cumulativeResult - runningPeak) * 100) / 100,
+    });
+  }
+
+  return data;
+}
+
 export async function getPerformanceData(
   userId: string,
-  period: '7D' | '30D' | '90D' = '30D'
-): Promise<{ success: boolean; data: PerformanceDataPoint[]; message?: string }> {
+  period: '7D' | '30D' | '90D' = '30D',
+  granularity: PerformanceGranularity = 'daily'
+): Promise<{
+  success: boolean;
+  data: PerformanceDataPoint[];
+  message?: string;
+  source?: PerformanceSource;
+}> {
   try {
     // Calculate start date based on period
     const now = new Date();
@@ -469,6 +717,18 @@ export async function getPerformanceData(
     }
 
     const accountIds = mt5Accounts.map((a) => a.id);
+    const currentAccounts = mt5Accounts
+      .map((account) => ({
+        balance: Number(account.balance),
+        equity: Number(account.equity),
+        profit: Number(account.profit),
+        lastHeartbeat: account.lastHeartbeat,
+      }))
+      .filter(
+        (account) =>
+          account.lastHeartbeat &&
+          (account.balance > 0 || account.equity > 0 || account.profit !== 0)
+      );
 
     // Get all snapshots for user's accounts in the period
     const snapshots = await signalRepository.findAccountSnapshotsFromDate(
@@ -476,41 +736,63 @@ export async function getPerformanceData(
       startDate
     );
 
-    if (snapshots.length === 0) {
-      return { success: true, data: [], message: 'No performance data available' };
+    const signalExecutionData = await buildSignalExecutionPerformanceData(
+      userId,
+      startDate,
+      granularity
+    );
+
+    if (snapshots.length === 0 && currentAccounts.length === 0) {
+      return signalExecutionData.length > 0
+        ? {
+            success: true,
+            data: signalExecutionData,
+            source: 'SIGNAL_EXECUTION',
+            message:
+              'Signal-derived trade movement from executed OPEN/CLOSE activity; connect MT5 heartbeat balance/equity for account performance',
+          }
+        : { success: true, data: [], message: 'No performance data available' };
     }
 
-    // Get the initial balance (first snapshot or oldest available)
-    const initialSnapshot =
-      await signalRepository.findInitialAccountSnapshot(accountIds);
-
-    const initialBalance = initialSnapshot ? Number(initialSnapshot.balance) : 0;
+    const currentTotalBalance = currentAccounts.reduce(
+      (total, account) => total + account.balance,
+      0
+    );
 
     // Group snapshots by date and aggregate across all accounts
-    const dateMap = new Map<string, { totalBalance: number; totalEquity: number; peakEquity: number }>();
+    const dateMap = new Map<string, PerformanceAggregate>();
 
     for (const snapshot of snapshots) {
-      const dateKey = snapshot.snapshotDate.toISOString().split('T')[0];
-      const existing = dateMap.get(dateKey);
-
-      if (existing) {
-        existing.totalBalance += Number(snapshot.balance);
-        existing.totalEquity += Number(snapshot.equity);
-        existing.peakEquity = Math.max(existing.peakEquity, Number(snapshot.peakEquity));
-      } else {
-        dateMap.set(dateKey, {
+      mergePerformanceAggregate(
+        dateMap,
+        getPerformanceBucketKey(snapshot.snapshotDate, granularity),
+        {
           totalBalance: Number(snapshot.balance),
           totalEquity: Number(snapshot.equity),
           peakEquity: Number(snapshot.peakEquity),
-        });
-      }
+        }
+      );
+    }
+
+    if (currentAccounts.length > 0) {
+      const todayKey = getPerformanceBucketKey(new Date(), granularity);
+      dateMap.set(todayKey, {
+        totalBalance: currentAccounts.reduce((total, account) => total + account.balance, 0),
+        totalEquity: currentAccounts.reduce((total, account) => total + account.equity, 0),
+        peakEquity: Math.max(...currentAccounts.map((account) => account.equity)),
+      });
     }
 
     // Calculate performance metrics
     const data: PerformanceDataPoint[] = [];
+    const sortedPerformanceEntries = [...dateMap.entries()].sort(([left], [right]) =>
+      left.localeCompare(right)
+    );
+    const initialBalance =
+      sortedPerformanceEntries[0]?.[1].totalBalance || currentTotalBalance;
     let runningPeakEquity = initialBalance;
 
-    for (const [dateKey, values] of dateMap) {
+    for (const [dateKey, values] of sortedPerformanceEntries) {
       // Update running peak equity
       runningPeakEquity = Math.max(runningPeakEquity, values.totalEquity);
 
@@ -525,13 +807,31 @@ export async function getPerformanceData(
         : 0;
 
       data.push({
-        date: new Date(dateKey).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        date: formatPerformanceBucketLabel(dateKey, granularity),
         growth: Math.round(growth * 100) / 100,
         drawdown: Math.round(drawdown * 100) / 100,
       });
     }
 
-    return { success: true, data };
+    if (data.length < 2 && signalExecutionData.length > 0) {
+      return {
+        success: true,
+        data: signalExecutionData,
+        source: 'SIGNAL_EXECUTION',
+        message:
+          'Signal-derived trade movement from executed OPEN/CLOSE activity; waiting for more MT5 heartbeat snapshots for account performance',
+      };
+    }
+
+    return {
+      success: true,
+      data,
+      source: 'ACCOUNT_SNAPSHOT',
+      message:
+        data.length < 2
+          ? 'Waiting for more MT5 heartbeat snapshots to draw a performance curve'
+          : undefined,
+    };
   } catch (error) {
     console.error('Get performance data error:', error);
     return { success: false, data: [], message: 'Failed to fetch performance data' };

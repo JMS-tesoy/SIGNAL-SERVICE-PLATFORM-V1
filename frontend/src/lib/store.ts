@@ -23,6 +23,15 @@ export interface User {
 export interface Subscription {
   id: string;
   status: string;
+  capabilities?: {
+    canAddMasterAccount: boolean;
+    canAddSlaveAccount: boolean;
+    canUseDemoAccounts: boolean;
+    canUseLiveAccounts: boolean;
+    maxSlaveAccounts: number;
+    maxSignalsPerDay: number;
+    signalDelay: number;
+  };
   tier: {
     id: string;
     name: string;
@@ -30,6 +39,16 @@ export interface Subscription {
     features: string[];
     maxSignalsPerDay: number;
     maxSlaveAccounts: number;
+    signalDelay?: number;
+    capabilities?: {
+      canAddMasterAccount: boolean;
+      canAddSlaveAccount: boolean;
+      canUseDemoAccounts: boolean;
+      canUseLiveAccounts: boolean;
+      maxSlaveAccounts: number;
+      maxSignalsPerDay: number;
+      signalDelay: number;
+    };
   };
   billingCycle: string;
   currentPeriodEnd: string;
@@ -147,6 +166,8 @@ interface SignalStats {
   failed: number;
   skipped: number;
   expired: number;
+  canceled?: number;
+  pending?: number;
   bySymbol: Record<string, number>;
   byAction: {
     OPEN: number;
