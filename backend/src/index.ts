@@ -26,6 +26,7 @@ import otpRoutes from "./routes/otp.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import subscriptionRoutes from "./routes/subscription.routes.js";
 import signalRoutes from "./routes/signal.routes.js";
+import realtimeRoutes from "./routes/realtime.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import downloadRoutes from "./routes/download.routes.js";
@@ -137,6 +138,7 @@ app.use("/api/user", userRoutes);
 
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/signals", signalRoutes);
+app.use("/api/realtime", realtimeRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/downloads", downloadRoutes);

@@ -1,195 +1,35 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { motion } from 'framer-motion';
+import Link from 'next/link';
 import {
   TrendingUp,
-  TrendingDown,
   Signal,
   Wallet,
   Activity,
   Clock,
   CheckCircle,
-  XCircle,
-  ArrowUpRight,
-  ArrowDownRight,
-  AlertCircle,
-  RefreshCw,
 } from 'lucide-react';
 import { useAuthStore, useSignalStore } from '@/lib/store';
-import { signalApi, subscriptionApi, userApi } from '@/lib/api';
+import { API_URL, signalApi, subscriptionApi, userApi } from '@/lib/api';
 import {
   PerformanceChart,
   WinLossDonut,
   SymbolBarChart,
   SuccessGauge,
 } from '@/components/charts';
-
-interface StatCardProps {
-  title: string;
-  value: string | number;
-  change?: number;
-  icon: React.ElementType;
-  color: string;
-}
-
-const compactNumberFormatter = new Intl.NumberFormat('en-US', {
-  notation: 'compact',
-  maximumFractionDigits: 1,
-});
-
-function formatMetricValue(value: string | number) {
-  if (typeof value === 'number') {
-    return compactNumberFormatter.format(value);
-  }
-
-  return value;
-}
-
-function StatCard({ title, value, change, icon: Icon, color }: StatCardProps) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="card min-w-0 p-4 sm:p-5 xl:p-6"
-    >
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl sm:h-12 sm:w-12 ${color}`}>
-          <Icon className="h-5 w-5 text-white sm:h-6 sm:w-6" />
-        </div>
-        {change !== undefined && (
-          <div className={`flex flex-shrink-0 items-center gap-1 text-xs sm:text-sm ${change >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>
-            {change >= 0 ? <ArrowUpRight className="w-4 h-4" /> : <ArrowDownRight className="w-4 h-4" />}
-            {Math.abs(change)}%
-          </div>
-        )}
-      </div>
-      <p className="mb-1 truncate text-sm text-foreground-muted">{title}</p>
-      <p className="break-words text-2xl font-bold leading-tight sm:text-3xl">
-        {formatMetricValue(value)}
-      </p>
-    </motion.div>
-  );
-}
-
-interface RecentSignal {
-  id: string;
-  symbol: string;
-  type: 'BUY' | 'SELL';
-  action: string;
-  volume: number;
-  price: number;
-  closePrice?: number | null;
-  profit?: number | null;
-  pnl?: number | null;
-  status: string;
-  createdAt: string;
-  execution?: {
-    status: string;
-    executedAt?: string | null;
-    executedPrice?: number | null;
-    closePrice?: number | null;
-    profit?: number | null;
-    pnl?: number | null;
-  } | null;
-}
-
-function formatTradePrice(value: number | null | undefined) {
-  return typeof value === 'number' ? value.toFixed(5) : '-';
-}
-
-function formatMoneyValue(value: number | null | undefined) {
-  if (typeof value !== 'number') return '-';
-
-  return `${value >= 0 ? '+' : '-'}$${Math.abs(value).toFixed(2)}`;
-}
-
-function getValueTone(value: number | null | undefined) {
-  if (typeof value !== 'number') return 'text-foreground-muted';
-
-  return value >= 0 ? 'text-accent-green' : 'text-accent-red';
-}
-
-function PositionResultRow({ signal }: { signal: RecentSignal }) {
-  const status = signal.execution?.status || signal.status;
-  const isClosedExecution = signal.action === 'CLOSE' && status === 'EXECUTED';
-  const closePrice =
-    signal.execution?.closePrice ??
-    signal.closePrice ??
-    (isClosedExecution ? signal.execution?.executedPrice : null);
-  const profit = signal.execution?.profit ?? signal.profit;
-  const pnl = signal.execution?.pnl ?? signal.pnl ?? profit;
-  
-  return (
-    <motion.div
-      initial={{ opacity: 0, x: -20 }}
-      animate={{ opacity: 1, x: 0 }}
-      className="grid grid-cols-3 gap-3 border-b border-border py-3 last:border-0"
-    >
-      <div className="min-w-0">
-        <p className="truncate font-medium">
-          {isClosedExecution ? formatTradePrice(closePrice) : '-'}
-        </p>
-        <p className="truncate text-xs text-foreground-muted">
-          {signal.symbol} {signal.action}
-        </p>
-      </div>
-      <div className="min-w-0 text-right">
-        <p className={`truncate font-mono font-medium ${getValueTone(profit)}`}>
-          {formatMoneyValue(profit)}
-        </p>
-        <p className="truncate text-xs text-foreground-muted">
-          Profit
-        </p>
-      </div>
-      <div className="min-w-0 text-right">
-        <p className={`truncate font-mono font-medium ${getValueTone(pnl)}`}>
-          {formatMoneyValue(pnl)}
-        </p>
-        <p className="truncate text-xs text-foreground-muted">
-          PnL
-        </p>
-      </div>
-    </motion.div>
-  );
-}
-
-type PerformanceSource = 'ACCOUNT_SNAPSHOT' | 'SIGNAL_EXECUTION';
-type PerformanceGranularity = 'hourly' | 'daily' | 'weekly' | 'monthly';
-
-function getPerformanceRequestGranularity(granularity: PerformanceGranularity) {
-  return granularity === 'hourly' || granularity === 'daily' ? 'hourly' : 'daily';
-}
-
-interface MT5Account {
-  id: string;
-  accountId: string;
-  accountType: string;
-  isConnected: boolean;
-  balance: number | null;
-  equity: number | null;
-  profit: number | null;
-}
-
-function AccountCard({ account }: { account: MT5Account }) {
-  return (
-    <div className="flex min-w-0 items-center justify-between gap-3 py-3 border-b border-border last:border-0">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className={`status-dot ${account.isConnected ? 'online' : 'offline'}`} />
-        <div className="min-w-0">
-          <p className="truncate font-medium">{account.accountId}</p>
-          <p className="text-sm text-foreground-muted">{account.accountType}</p>
-        </div>
-      </div>
-      <div className="min-w-0 text-right">
-        <p className="truncate font-mono text-sm sm:text-base">${account.balance?.toFixed(2) || '0.00'}</p>
-        <p className={`text-sm ${(account.profit ?? 0) >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>
-          {(account.profit ?? 0) >= 0 ? '+' : ''}{account.profit?.toFixed(2) || '0.00'}
-        </p>
-      </div>
-    </div>
-  );
-}
+import { AccountCard } from './components/AccountCard';
+import { DashboardErrorAlert } from './components/DashboardErrorAlert';
+import { PositionResultRow } from './components/PositionResultRow';
+import { QuickActionCard } from './components/QuickActionCard';
+import { StatCard } from './components/StatCard';
+import type {
+  MT5Account,
+  PerformanceGranularity,
+  PerformanceSource,
+  RecentSignal,
+} from './types';
+import { getPerformanceRequestGranularity } from './utils';
 
 export default function DashboardPage() {
   const { accessToken } = useAuthStore();
@@ -210,13 +50,18 @@ export default function DashboardPage() {
   const performanceRequestIdRef = useRef(0);
   const hasPerformanceLoadedRef = useRef(false);
 
-  const fetchOverviewData = useCallback(async () => {
+  const fetchOverviewData = useCallback(async (options?: { showLoading?: boolean }) => {
+    const showLoading = options?.showLoading ?? true;
+
     if (!accessToken) {
       setIsLoading(false);
       return;
     }
 
-    setIsLoading(true);
+    if (showLoading) {
+      setIsLoading(true);
+    }
+
     setOverviewError('');
 
     try {
@@ -264,7 +109,9 @@ export default function DashboardPage() {
       console.error('Failed to fetch dashboard overview data:', overviewFetchError);
       setOverviewError('Failed to fetch dashboard overview data.');
     } finally {
-      setIsLoading(false);
+      if (showLoading) {
+        setIsLoading(false);
+      }
     }
   }, [accessToken, setStats]);
 
@@ -337,6 +184,78 @@ export default function DashboardPage() {
     fetchTradingPerformance();
   }, [fetchTradingPerformance]);
 
+  useEffect(() => {
+    if (!accessToken) return;
+
+    const controller = new AbortController();
+    let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
+
+    const scheduleRealtimeRefresh = () => {
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+
+      refreshTimeout = setTimeout(() => {
+        fetchOverviewData({ showLoading: false });
+        fetchTradingPerformance();
+      }, 250);
+    };
+
+    const connectDashboardStream = async () => {
+      try {
+        const response = await fetch(`${API_URL}/api/realtime/dashboard`, {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          signal: controller.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          return;
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (!controller.signal.aborted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          let eventBoundary = buffer.indexOf('\n\n');
+          while (eventBoundary !== -1) {
+            const eventBlock = buffer.slice(0, eventBoundary);
+            buffer = buffer.slice(eventBoundary + 2);
+
+            if (
+              eventBlock.includes('event: dashboard:trade-report') ||
+              eventBlock.includes('event: dashboard:refresh')
+            ) {
+              scheduleRealtimeRefresh();
+            }
+
+            eventBoundary = buffer.indexOf('\n\n');
+          }
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          console.error('Dashboard realtime stream failed:', error);
+        }
+      }
+    };
+
+    connectDashboardStream();
+
+    return () => {
+      controller.abort();
+      if (refreshTimeout) {
+        clearTimeout(refreshTimeout);
+      }
+    };
+  }, [accessToken, fetchOverviewData, fetchTradingPerformance]);
+
   const handleDashboardRetry = () => {
     fetchOverviewData();
     fetchTradingPerformance();
@@ -377,23 +296,10 @@ export default function DashboardPage() {
       </div>
 
       {dashboardError && (
-        <div className="flex flex-col gap-3 rounded-xl border border-accent-red/20 bg-accent-red/10 p-4 text-accent-red sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0" />
-            <div>
-              <p className="font-medium">Some dashboard data could not be loaded</p>
-              <p className="text-sm text-foreground-muted">{dashboardError}</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleDashboardRetry}
-            className="btn-secondary flex items-center justify-center gap-2 text-sm"
-          >
-            <RefreshCw className="h-4 w-4" />
-            Retry
-          </button>
-        </div>
+        <DashboardErrorAlert
+          error={dashboardError}
+          onRetry={handleDashboardRetry}
+        />
       )}
 
       {/* Stats Grid */}
@@ -475,18 +381,21 @@ export default function DashboardPage() {
         {/* Position Results */}
         <div className="card min-w-0 p-4 sm:p-5 xl:col-span-2 xl:p-6">
           <div className="mb-6 flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Position Results</h2>
-            <a href="/dashboard/signals" className="text-primary text-sm hover:underline">
+            <div>
+              <h2 className="text-lg font-semibold">Trade History</h2>
+              <p className="text-sm text-foreground-muted">Latest closed positions</p>
+            </div>
+            <Link href="/dashboard/signals" className="text-primary text-sm hover:underline">
               View All
-            </a>
+            </Link>
           </div>
           
           {recentSignals.length > 0 ? (
             <div>
-              <div className="grid grid-cols-3 gap-3 border-b border-border pb-2 text-xs font-medium uppercase tracking-wide text-foreground-muted">
-                <span>Close Position</span>
-                <span className="text-right">Profit</span>
-                <span className="text-right">PnL</span>
+              <div className="grid grid-cols-[minmax(0,1.45fr)_minmax(96px,0.8fr)_minmax(120px,0.9fr)] gap-3 border-b border-border pb-2 text-xs font-medium uppercase tracking-wide text-foreground-muted">
+                <span>Trade</span>
+                <span className="text-right">Close</span>
+                <span className="text-right">Result</span>
               </div>
               {recentSignals.map((signal) => (
                 <PositionResultRow key={signal.id} signal={signal} />
@@ -495,8 +404,8 @@ export default function DashboardPage() {
           ) : (
             <div className="text-center py-12 text-foreground-muted">
               <Signal className="w-12 h-12 mx-auto mb-4 opacity-50" />
-              <p>No position results yet</p>
-              <p className="text-sm">Closed position results will appear here when available</p>
+              <p>No closed trades yet</p>
+              <p className="text-sm">Closed trade history will appear here when available</p>
             </div>
           )}
         </div>
@@ -505,9 +414,9 @@ export default function DashboardPage() {
         <div className="card min-w-0 p-4 sm:p-5 xl:p-6">
           <div className="mb-6 flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">MT5 Accounts</h2>
-            <a href="/dashboard/accounts" className="text-primary text-sm hover:underline">
+            <Link href="/dashboard/accounts" className="text-primary text-sm hover:underline">
               Manage
-            </a>
+            </Link>
           </div>
           
           {accounts.length > 0 ? (
@@ -520,9 +429,9 @@ export default function DashboardPage() {
             <div className="text-center py-8 text-foreground-muted">
               <Wallet className="w-12 h-12 mx-auto mb-4 opacity-50" />
               <p>No accounts connected</p>
-              <a href="/dashboard/accounts" className="text-primary text-sm hover:underline">
+              <Link href="/dashboard/accounts" className="text-primary text-sm hover:underline">
                 Add MT5 Account
-              </a>
+              </Link>
             </div>
           )}
         </div>
@@ -530,53 +439,30 @@ export default function DashboardPage() {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3 xl:gap-6">
-        <motion.a
+        <QuickActionCard
           href="/dashboard/accounts"
-          className="card group min-w-0 p-4 transition-all duration-300 hover:border-primary/50 sm:p-5 xl:p-6"
-          whileHover={{ y: -2 }}
-        >
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition">
-              <Wallet className="w-6 h-6 text-primary" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-semibold">Connect Account</p>
-              <p className="truncate text-sm text-foreground-muted">Add your MT5 account</p>
-            </div>
-          </div>
-        </motion.a>
-
-        <motion.a
+          icon={Wallet}
+          title="Connect Account"
+          description="Add your MT5 account"
+          toneClassName="bg-primary/10 text-primary group-hover:bg-primary/20"
+          hoverBorderClassName="hover:border-primary/50"
+        />
+        <QuickActionCard
           href="/dashboard/subscription"
-          className="card group min-w-0 p-4 transition-all duration-300 hover:border-accent-green/50 sm:p-5 xl:p-6"
-          whileHover={{ y: -2 }}
-        >
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-accent-green/10 flex items-center justify-center group-hover:bg-accent-green/20 transition">
-              <TrendingUp className="w-6 h-6 text-accent-green" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-semibold">Upgrade Plan</p>
-              <p className="truncate text-sm text-foreground-muted">Get more signals</p>
-            </div>
-          </div>
-        </motion.a>
-
-        <motion.a
+          icon={TrendingUp}
+          title="Upgrade Plan"
+          description="Get more signals"
+          toneClassName="bg-accent-green/10 text-accent-green group-hover:bg-accent-green/20"
+          hoverBorderClassName="hover:border-accent-green/50"
+        />
+        <QuickActionCard
           href="/dashboard/security"
-          className="card group min-w-0 p-4 transition-all duration-300 hover:border-accent-purple/50 sm:p-5 xl:p-6"
-          whileHover={{ y: -2 }}
-        >
-          <div className="flex min-w-0 items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-accent-purple/10 flex items-center justify-center group-hover:bg-accent-purple/20 transition">
-              <Activity className="w-6 h-6 text-accent-purple" />
-            </div>
-            <div className="min-w-0">
-              <p className="font-semibold">Enable 2FA</p>
-              <p className="truncate text-sm text-foreground-muted">Secure your account</p>
-            </div>
-          </div>
-        </motion.a>
+          icon={Activity}
+          title="Enable 2FA"
+          description="Secure your account"
+          toneClassName="bg-accent-purple/10 text-accent-purple group-hover:bg-accent-purple/20"
+          hoverBorderClassName="hover:border-accent-purple/50"
+        />
       </div>
     </div>
   );

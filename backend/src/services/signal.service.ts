@@ -5,6 +5,7 @@
 import { checkSignalLimit } from './subscription.service.js';
 import { Prisma, SignalAction, SignalStatus, TradeType, ExecutionStatus } from '@prisma/client';
 import { signalRepository } from '../database/repositories/index.js';
+import { emitDashboardRealtimeEvent } from './realtime.service.js';
 
 // =============================================================================
 // TYPES
@@ -283,6 +284,13 @@ export async function acknowledgeExecution(
     }
 
     await signalRepository.reconcileSignalStatusFromExecutions(existing.signalId);
+
+    emitDashboardRealtimeEvent(userId, {
+      type: 'dashboard:trade-report',
+      signalId: existing.signalId,
+      status: execStatus,
+      occurredAt: new Date().toISOString(),
+    });
 
     return { success: true, message: 'Execution acknowledged' };
   } catch (error) {

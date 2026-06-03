@@ -18,6 +18,7 @@ import type {
   Mt5SignalsPullInput,
   Mt5TradeReportInput,
 } from "../routes/schemas/mt5.schemas.js";
+import { emitDashboardRealtimeEvent } from "./realtime.service.js";
 
 type SubscriptionWithTier = Subscription & {
   tier: SubscriptionTier;
@@ -596,6 +597,14 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
       message: "Trade report already processed",
     };
   }
+
+  emitDashboardRealtimeEvent(context.mt5Account.userId, {
+    type: "dashboard:trade-report",
+    signalId: matchingExecution.signalId,
+    status: executionStatus,
+    action: input.status,
+    occurredAt: now.toISOString(),
+  });
 
   return {
     ok: true,
