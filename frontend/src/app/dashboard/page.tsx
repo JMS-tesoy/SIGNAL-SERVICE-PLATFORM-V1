@@ -11,7 +11,8 @@ import {
   CheckCircle,
 } from 'lucide-react';
 import { useAuthStore, useSignalStore } from '@/lib/store';
-import { API_URL, signalApi, subscriptionApi, userApi } from '@/lib/api';
+import { signalApi, subscriptionApi, userApi } from '@/lib/api';
+import { connectDashboardRealtime } from '@/lib/realtime';
 import {
   PerformanceChart,
   WinLossDonut,
@@ -76,12 +77,15 @@ export default function DashboardPage() {
       }
 
       const recentSignalsResult = await signalApi.getHistory(accessToken, {
-        limit: 5,
-        action: 'close',
+        limit: 25,
         status: 'executed',
       });
       if (recentSignalsResult.data) {
-        setRecentSignals(recentSignalsResult.data.signals as RecentSignal[]);
+        const closedSignals = (recentSignalsResult.data.signals as RecentSignal[])
+          .filter((signal) => typeof signal.execution?.closePrice === 'number')
+          .slice(0, 5);
+
+        setRecentSignals(closedSignals);
       } else if (recentSignalsResult.error) {
         failures.push(`Recent signals: ${recentSignalsResult.error}`);
       }
@@ -187,7 +191,6 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!accessToken) return;
 
-    const controller = new AbortController();
     let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
 
     const scheduleRealtimeRefresh = () => {
@@ -201,55 +204,12 @@ export default function DashboardPage() {
       }, 250);
     };
 
-    const connectDashboardStream = async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/realtime/dashboard`, {
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-          },
-          signal: controller.signal,
-        });
-
-        if (!response.ok || !response.body) {
-          return;
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        while (!controller.signal.aborted) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          let eventBoundary = buffer.indexOf('\n\n');
-          while (eventBoundary !== -1) {
-            const eventBlock = buffer.slice(0, eventBoundary);
-            buffer = buffer.slice(eventBoundary + 2);
-
-            if (
-              eventBlock.includes('event: dashboard:trade-report') ||
-              eventBlock.includes('event: dashboard:refresh')
-            ) {
-              scheduleRealtimeRefresh();
-            }
-
-            eventBoundary = buffer.indexOf('\n\n');
-          }
-        }
-      } catch (error) {
-        if (!controller.signal.aborted) {
-          console.error('Dashboard realtime stream failed:', error);
-        }
-      }
-    };
-
-    connectDashboardStream();
+    const socket = connectDashboardRealtime(accessToken, {
+      onDashboardRefresh: scheduleRealtimeRefresh,
+    });
 
     return () => {
-      controller.abort();
+      socket.disconnect();
       if (refreshTimeout) {
         clearTimeout(refreshTimeout);
       }

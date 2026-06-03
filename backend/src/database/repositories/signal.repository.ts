@@ -464,12 +464,29 @@ export async function createPendingExecutionsForActiveSubscriberSlaveAccounts(
     );
 
   if (executions.length === 0) {
-    return;
+    return [];
   }
 
   await prisma.signalExecution.createMany({
     data: executions,
     skipDuplicates: true,
+  });
+
+  const mt5AccountIds = executions
+    .map((execution) => execution.mt5AccountId)
+    .filter((mt5AccountId): mt5AccountId is string => Boolean(mt5AccountId));
+
+  return prisma.signalExecution.findMany({
+    where: {
+      signalId,
+      mt5AccountId: { in: mt5AccountIds },
+    },
+    select: {
+      id: true,
+      signalId: true,
+      userId: true,
+      mt5AccountId: true,
+    },
   });
 }
 

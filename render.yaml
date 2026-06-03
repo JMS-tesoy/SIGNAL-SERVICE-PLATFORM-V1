@@ -9,8 +9,8 @@ services:
     region: oregon
     plan: free
     rootDir: backend
-    buildCommand: npm install && npx prisma generate && npm run build
-    startCommand: npm start
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm db:generate && pnpm build
+    startCommand: pnpm start
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
@@ -25,6 +25,11 @@ services:
         generateValue: true
       - key: FRONTEND_URL
         sync: false
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: signal-service-realtime
+          property: connectionString
       - key: STRIPE_SECRET_KEY
         sync: false
       - key: STRIPE_WEBHOOK_SECRET
@@ -37,8 +42,8 @@ services:
     region: oregon
     plan: free
     rootDir: frontend
-    buildCommand: npm install && npm run build
-    startCommand: npm start
+    buildCommand: corepack enable && pnpm install --frozen-lockfile && pnpm build
+    startCommand: pnpm start
     envVars:
       - key: NEXT_PUBLIC_API_URL
         fromService:
@@ -52,3 +57,9 @@ databases:
     user: signal_user
     plan: free
     region: oregon
+
+  - name: signal-service-realtime
+    type: keyvalue
+    plan: starter
+    region: oregon
+    maxmemoryPolicy: noeviction

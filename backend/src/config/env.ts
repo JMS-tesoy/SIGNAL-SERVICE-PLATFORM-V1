@@ -10,6 +10,7 @@ const envSchema = z.object({
   APP_URL: z.string().url().optional(),
   NEXT_PUBLIC_SITE_URL: z.string().url().optional(),
   API_URL: z.string().url().default("http://localhost:3001"),
+  REDIS_URL: z.string().url().optional(),
   CORS_ORIGINS: z.string().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(900000),
   RATE_LIMIT_MAX_REQUESTS: z.coerce.number().int().positive().default(100),

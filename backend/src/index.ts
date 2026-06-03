@@ -4,6 +4,7 @@
 
 import mt5Routes from "./routes/mt5.routes.js";
 import "dotenv/config";
+import { createServer } from "node:http";
 import express, { Request, Response } from "express";
 import path from "node:path";
 import cors from "cors";
@@ -26,7 +27,6 @@ import otpRoutes from "./routes/otp.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import subscriptionRoutes from "./routes/subscription.routes.js";
 import signalRoutes from "./routes/signal.routes.js";
-import realtimeRoutes from "./routes/realtime.routes.js";
 import webhookRoutes from "./routes/webhook.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import downloadRoutes from "./routes/download.routes.js";
@@ -41,8 +41,10 @@ import { requestId } from "./core/middleware/index.js";
 
 // Cron Jobs
 import { startCronJobs } from "./jobs/scheduler.js";
+import { initializeRealtime } from "./services/realtime.service.js";
 
 const app = express();
+const server = createServer(app);
 const PORT = env.PORT;
 
 // =============================================================================
@@ -138,7 +140,6 @@ app.use("/api/user", userRoutes);
 
 app.use("/api/subscriptions", subscriptionRoutes);
 app.use("/api/signals", signalRoutes);
-app.use("/api/realtime", realtimeRoutes);
 app.use("/api/webhooks", webhookRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/downloads", downloadRoutes);
@@ -154,7 +155,9 @@ app.use(errorHandler);
 // START SERVER
 // =============================================================================
 
-app.listen(PORT, () => {
+await initializeRealtime(server);
+
+server.listen(PORT, () => {
   console.log(`🚀 Signal Service Backend running on http://localhost:${PORT}`);
 
   if (env.NODE_ENV !== "test") {

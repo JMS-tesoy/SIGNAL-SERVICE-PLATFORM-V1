@@ -14,7 +14,12 @@ export function formatMetricValue(value: string | number) {
 }
 
 export function formatTradePrice(value: number | null | undefined) {
-  return typeof value === 'number' ? value.toFixed(5) : '-';
+  return typeof value === 'number'
+    ? new Intl.NumberFormat('en-US', {
+        maximumFractionDigits: 5,
+        useGrouping: false,
+      }).format(value)
+    : '-';
 }
 
 export function formatMoneyValue(value: number | null | undefined) {

@@ -45,6 +45,7 @@ export const mt5SignalsPullSchema = z.object({
   terminalFingerprint: terminalFingerprintSchema,
   accountTradeMode: accountTradeModeSchema,
   lastSignalTimestamp: z.string().datetime().optional(),
+  waitMs: z.number().int().min(0).max(20000).optional().default(0),
 });
 
 export const mt5TradeReportSchema = z.object({

@@ -5,7 +5,10 @@
 import { checkSignalLimit } from './subscription.service.js';
 import { Prisma, SignalAction, SignalStatus, TradeType, ExecutionStatus } from '@prisma/client';
 import { signalRepository } from '../database/repositories/index.js';
-import { emitDashboardRealtimeEvent } from './realtime.service.js';
+import {
+  emitDashboardRealtimeEvent,
+  emitReceiverSignalAvailable,
+} from './realtime.service.js';
 
 // =============================================================================
 // TYPES
@@ -117,8 +120,21 @@ export async function receiveSignal(
       expiresAt: new Date(Date.now() + 120 * 1000), // 2 minutes expiry
     });
 
-    await signalRepository.createPendingExecutionsForActiveSubscriberSlaveAccounts(
+    const receiverExecutions = await signalRepository.createPendingExecutionsForActiveSubscriberSlaveAccounts(
       newSignal.id
+    );
+
+    await Promise.all(
+      receiverExecutions.map((execution) =>
+        execution.mt5AccountId
+          ? emitReceiverSignalAvailable({
+              signalId: execution.signalId,
+              executionId: execution.id,
+              mt5AccountId: execution.mt5AccountId,
+              occurredAt: new Date().toISOString(),
+            })
+          : Promise.resolve()
+      )
     );
 
     return { success: true, message: 'Signal received', signalId: newSignal.id };

@@ -11,12 +11,12 @@ import {
 
 export function PositionResultRow({ signal }: { signal: RecentSignal }) {
   const status = signal.execution?.status || signal.status;
-  const isClosedExecution = signal.action === 'CLOSE' && status === 'EXECUTED';
   const reportedAt = signal.execution?.executedAt ?? signal.createdAt;
   const closePrice =
     signal.execution?.closePrice ??
     signal.closePrice ??
-    (isClosedExecution ? signal.execution?.executedPrice : null);
+    null;
+  const isClosedExecution = status === 'EXECUTED' && typeof closePrice === 'number';
   const profit = signal.execution?.profit ?? signal.profit;
   const pnl = signal.execution?.pnl ?? signal.pnl ?? profit;
   const hasReportedResult = typeof pnl === 'number';

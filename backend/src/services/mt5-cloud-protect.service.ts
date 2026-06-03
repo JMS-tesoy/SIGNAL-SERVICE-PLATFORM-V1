@@ -18,7 +18,10 @@ import type {
   Mt5SignalsPullInput,
   Mt5TradeReportInput,
 } from "../routes/schemas/mt5.schemas.js";
-import { emitDashboardRealtimeEvent } from "./realtime.service.js";
+import {
+  emitDashboardRealtimeEvent,
+  waitForReceiverSignal,
+} from "./realtime.service.js";
 
 type SubscriptionWithTier = Subscription & {
   tier: SubscriptionTier;
@@ -37,6 +40,7 @@ const TERMINAL_EXECUTION_STATUSES = new Set<ExecutionStatus>([
   "SKIPPED",
   "EXPIRED",
 ]);
+const MAX_RECEIVER_LONG_POLL_WAIT_MS = 20000;
 const STALE_SESSION_MS = 2 * 60 * 1000;
 
 function isSessionStale(lastHeartbeatAt: Date | null | undefined, now = new Date()) {
@@ -45,6 +49,10 @@ function isSessionStale(lastHeartbeatAt: Date | null | undefined, now = new Date
   }
 
   return now.getTime() - lastHeartbeatAt.getTime() > STALE_SESSION_MS;
+}
+
+function getReceiverLongPollWaitMs(input: Mt5SignalsPullInput) {
+  return Math.min(input.waitMs ?? 0, MAX_RECEIVER_LONG_POLL_WAIT_MS);
 }
 
 async function markSessionStale(sessionId: string) {
@@ -413,23 +421,32 @@ export async function pullMt5Signals(rawApiKey: string | null, input: Mt5Signals
     return { ...blocked("BLOCK_SESSION_STALE", "Session is stale"), signals: [] };
   }
 
-  const executions = await prisma.signalExecution.findMany({
-    where: {
-      userId: context.mt5Account.userId,
-      mt5AccountId: context.mt5Account.id,
-      status: "PENDING",
-      signal: {
-        status: { in: ["PENDING", "ACTIVE"] },
-        expiresAt: { gt: new Date() },
-        ...(context.mt5Account.allowedMasterAccountId
-          ? { mt5AccountId: context.mt5Account.allowedMasterAccountId }
-          : {}),
+  const findPendingExecutions = () =>
+    prisma.signalExecution.findMany({
+      where: {
+        userId: context.mt5Account.userId,
+        mt5AccountId: context.mt5Account.id,
+        status: "PENDING",
+        signal: {
+          status: { in: ["PENDING", "ACTIVE"] },
+          expiresAt: { gt: new Date() },
+          ...(context.mt5Account.allowedMasterAccountId
+            ? { mt5AccountId: context.mt5Account.allowedMasterAccountId }
+            : {}),
+        },
       },
-    },
-    include: { signal: true },
-    orderBy: { receivedAt: "asc" },
-    take: 10,
-  });
+      include: { signal: true },
+      orderBy: { receivedAt: "asc" },
+      take: 10,
+    });
+
+  let executions = await findPendingExecutions();
+  const waitMs = getReceiverLongPollWaitMs(input);
+
+  if (executions.length === 0 && waitMs > 0) {
+    await waitForReceiverSignal(context.mt5Account.id, waitMs);
+    executions = await findPendingExecutions();
+  }
 
   return {
     allowed: true,
@@ -555,7 +572,13 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
     };
   }
 
-  if (TERMINAL_EXECUTION_STATUSES.has(matchingExecution.status)) {
+  const canApplyCloseReport =
+    input.status === "CLOSED" && matchingExecution.status === "EXECUTED";
+
+  if (
+    TERMINAL_EXECUTION_STATUSES.has(matchingExecution.status) &&
+    !canApplyCloseReport
+  ) {
     await signalRepository.reconcileSignalStatusFromExecutions(matchingExecution.signalId);
 
     return {
@@ -568,14 +591,14 @@ export async function reportMt5Trade(rawApiKey: string | null, input: Mt5TradeRe
   const result = await prisma.signalExecution.updateMany({
     where: {
       id: matchingExecution.id,
-      status: "PENDING",
+      status: canApplyCloseReport ? "EXECUTED" : "PENDING",
     },
     data: {
       status: executionStatus,
       executedAt: executionStatus === "EXECUTED" ? now : null,
       acknowledgedAt: now,
       executedVolume: input.lotSize,
-      executedPrice: executionPrice,
+      executedPrice: canApplyCloseReport ? undefined : executionPrice,
       closePrice: input.closePrice ?? undefined,
       profit: input.profit ?? undefined,
       slaveTicket: input.ticket ? BigInt(input.ticket) : undefined,
