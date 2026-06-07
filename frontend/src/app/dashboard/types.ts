@@ -5,7 +5,15 @@ export interface RecentSignal {
   action: string;
   volume: number;
   price: number;
+  openPrice?: number | null;
   closePrice?: number | null;
+  priceDifference?: number | null;
+  directionalPriceDifference?: number | null;
+  reportedPnl?: number | null;
+  calculatedPnl?: number | null;
+  resultPnl?: number | null;
+  resultSource?: 'CALCULATED_FROM_PRICES' | 'REPORTED_BY_MT5' | null;
+  matchedOpenSignalId?: string | null;
   profit?: number | null;
   pnl?: number | null;
   status: string;
@@ -32,4 +40,6 @@ export interface MT5Account {
   balance: number | null;
   equity: number | null;
   profit: number | null;
+  floatingProfit?: number | null;
+  realizedProfit?: number | null;
 }

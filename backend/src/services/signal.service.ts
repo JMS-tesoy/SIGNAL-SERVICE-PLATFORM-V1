@@ -20,6 +20,7 @@ interface IncomingSignal {
   type: string;
   volume: number;
   price: number;
+  profit?: number | null;
   sl?: number;
   tp?: number;
   ticket?: number;
@@ -39,6 +40,32 @@ interface PendingSignalsResult {
   success: boolean;
   signals: any[];
   message?: string;
+}
+
+function buildPositionMatchKey(signal: {
+  providerId: string;
+  mt5AccountId: string | null;
+  symbol: string;
+  type: TradeType;
+  masterPositionId: bigint | null;
+}) {
+  if (!signal.masterPositionId) return null;
+
+  return [
+    signal.providerId,
+    signal.mt5AccountId || 'account',
+    signal.symbol,
+    signal.type,
+    signal.masterPositionId.toString(),
+  ].join(':');
+}
+
+function decimalToNullableNumber(value: Prisma.Decimal | number | null | undefined) {
+  return value !== null && value !== undefined ? Number(value) : null;
+}
+
+function roundCurrencyValue(value: number) {
+  return Math.round(value * 100) / 100;
 }
 
 // =============================================================================
@@ -64,6 +91,10 @@ export async function receiveSignal(
     const action = signal.action.toUpperCase() as SignalAction;
     const sl = signal.sl || null;
     const tp = signal.tp || null;
+    const profit =
+      typeof signal.profit === 'number' && Number.isFinite(signal.profit)
+        ? signal.profit
+        : null;
 
     if (masterTicket) {
       if (action === "MODIFY") {
@@ -111,6 +142,7 @@ export async function receiveSignal(
       type: signal.type.toUpperCase() as TradeType,
       volume: signal.volume,
       price: signal.price,
+      profit,
       sl,
       tp,
       masterTicket,
@@ -322,9 +354,16 @@ export async function acknowledgeExecution(
 export async function updateHeartbeat(
   userId: string,
   accountId: string,
-  data: { balance?: number; equity?: number; profit?: number }
+  data: { balance?: number; equity?: number; profit?: number; realizedProfit?: number; realized_profit?: number }
 ): Promise<SignalResult> {
   try {
+    const normalizedData = {
+      balance: data.balance,
+      equity: data.equity,
+      profit: data.profit,
+      realizedProfit: data.realizedProfit ?? data.realized_profit,
+    };
+
     // Get the MT5 account first (need the id for snapshot)
     const mt5Account = await signalRepository.findAccountByUserAndAccountId(
       userId,
@@ -336,15 +375,15 @@ export async function updateHeartbeat(
     }
 
     // Update the MT5Account with current values
-    await signalRepository.updateAccountHeartbeat(mt5Account.id, data);
+    await signalRepository.updateAccountHeartbeat(mt5Account.id, normalizedData);
 
     // Capture daily snapshot if we have balance/equity data
-    if (data.balance !== undefined && data.equity !== undefined) {
+    if (normalizedData.balance !== undefined && normalizedData.equity !== undefined) {
       await captureBalanceSnapshot(
         mt5Account.id,
-        data.balance,
-        data.equity,
-        data.profit || 0
+        normalizedData.balance,
+        normalizedData.equity,
+        normalizedData.profit || 0
       );
     }
 
@@ -452,7 +491,80 @@ export async function getSignalHistory(
     limit,
   });
 
-  return { signals, total, limit, offset };
+  const closeSignals = signals.filter((signal) => signal.action === 'CLOSE');
+  const openingSignals = await signalRepository.findOpeningSignalsForCloseSignals({
+    closeSignals,
+    userId,
+  });
+  const openingSignalByPosition = new Map<string, (typeof openingSignals)[number]>();
+
+  for (const openingSignal of openingSignals) {
+    const key = buildPositionMatchKey(openingSignal);
+    if (key && !openingSignalByPosition.has(key)) {
+      openingSignalByPosition.set(key, openingSignal);
+    }
+  }
+
+  const enrichedSignals = signals.map((signal) => {
+    const execution = signal.executions[0];
+    const positionMatchKey = buildPositionMatchKey(signal);
+    const openingSignal =
+      signal.action === 'CLOSE' && positionMatchKey
+        ? openingSignalByPosition.get(positionMatchKey)
+        : null;
+    const openingExecution = openingSignal?.executions[0];
+    const openPrice =
+      signal.action === 'CLOSE'
+        ? decimalToNullableNumber(openingExecution?.executedPrice) ??
+          decimalToNullableNumber(openingSignal?.price)
+        : decimalToNullableNumber(execution?.executedPrice) ??
+          decimalToNullableNumber(signal.price);
+    const closePrice =
+      signal.action === 'CLOSE'
+        ? decimalToNullableNumber(execution?.closePrice) ??
+          decimalToNullableNumber(execution?.executedPrice) ??
+          decimalToNullableNumber(signal.price)
+        : decimalToNullableNumber(execution?.closePrice);
+    const priceDifference =
+      openPrice !== null && closePrice !== null ? closePrice - openPrice : null;
+    const directionalPriceDifference =
+      priceDifference !== null
+        ? signal.type === 'BUY'
+          ? priceDifference
+          : -priceDifference
+        : null;
+    const reportedPnl =
+      decimalToNullableNumber(execution?.profit) ??
+      decimalToNullableNumber(signal.profit);
+    const calculatedPnl =
+      directionalPriceDifference !== null
+        ? roundCurrencyValue(directionalPriceDifference * Number(signal.volume))
+        : null;
+    const resultPnl = reportedPnl ?? calculatedPnl;
+    const resultSource =
+      reportedPnl !== null
+        ? 'REPORTED_BY_MT5'
+        : calculatedPnl !== null
+          ? 'CALCULATED_FROM_PRICES'
+        : null;
+
+    return {
+      ...signal,
+      tradeResult: {
+        openPrice,
+        closePrice,
+        priceDifference,
+        directionalPriceDifference,
+        reportedPnl,
+        calculatedPnl,
+        resultPnl,
+        resultSource,
+        matchedOpenSignalId: openingSignal?.id ?? null,
+      },
+    };
+  });
+
+  return { signals: enrichedSignals, total, limit, offset };
 }
 
 // =============================================================================

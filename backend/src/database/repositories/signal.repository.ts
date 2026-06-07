@@ -52,7 +52,7 @@ export function findAccountByUserAndAccountId(userId: string, accountId: string)
 
 export function updateAccountHeartbeat(
   mt5AccountId: string,
-  data: { balance?: number; equity?: number; profit?: number }
+  data: { balance?: number; equity?: number; profit?: number; realizedProfit?: number }
 ) {
   return prisma.mT5Account.update({
     where: { id: mt5AccountId },
@@ -62,6 +62,7 @@ export function updateAccountHeartbeat(
       balance: data.balance,
       equity: data.equity,
       profit: data.profit,
+      realizedProfit: data.realizedProfit,
     },
   });
 }
@@ -129,6 +130,44 @@ export function findSignalHistory(input: {
     }),
     prisma.signal.count({ where }),
   ]);
+}
+
+export function findOpeningSignalsForCloseSignals(input: {
+  closeSignals: Array<{
+    providerId: string;
+    mt5AccountId: string | null;
+    symbol: string;
+    type: TradeType;
+    masterPositionId: bigint | null;
+    createdAt: Date;
+  }>;
+  userId: string;
+}) {
+  const matchableCloseSignals = input.closeSignals.filter(
+    (signal) => signal.masterPositionId !== null
+  );
+
+  if (matchableCloseSignals.length === 0) {
+    return [];
+  }
+
+  return prisma.signal.findMany({
+    where: {
+      action: "OPEN",
+      OR: matchableCloseSignals.map((signal) => ({
+        providerId: signal.providerId,
+        mt5AccountId: signal.mt5AccountId,
+        symbol: signal.symbol,
+        type: signal.type,
+        masterPositionId: signal.masterPositionId,
+        createdAt: { lte: signal.createdAt },
+      })),
+    },
+    include: {
+      executions: { where: { userId: input.userId } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
 }
 
 export function findExecutionsForStatistics(userId: string, startDate: Date) {
@@ -229,6 +268,7 @@ export function createSignal(data: {
   type: TradeType;
   volume: number;
   price: number;
+  profit: number | null;
   sl: number | null;
   tp: number | null;
   masterTicket: bigint | null;
@@ -237,11 +277,26 @@ export function createSignal(data: {
   comment: string | null;
   expiresAt: Date;
 }) {
-  return prisma.signal.create({
-    data: {
-      ...data,
-      status: "PENDING",
-    },
+  return prisma.$transaction(async (tx) => {
+    const signal = await tx.signal.create({
+      data: {
+        ...data,
+        status: "PENDING",
+      },
+    });
+
+    if (data.action === "CLOSE" && data.profit !== null) {
+      await tx.mT5Account.update({
+        where: { id: data.mt5AccountId },
+        data: {
+          realizedProfit: {
+            increment: data.profit,
+          },
+        },
+      });
+    }
+
+    return signal;
   });
 }
 

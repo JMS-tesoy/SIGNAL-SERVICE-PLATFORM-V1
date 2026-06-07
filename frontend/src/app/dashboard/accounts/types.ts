@@ -32,6 +32,8 @@ export interface MT5Account {
   balance: number | null;
   equity: number | null;
   profit: number | null;
+  floatingProfit?: number | null;
+  realizedProfit?: number | null;
 }
 
 export type GeneratedKey = {

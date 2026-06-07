@@ -30,6 +30,7 @@ type Mt5AccountForResponse = {
   balance: unknown;
   equity: unknown;
   profit: unknown;
+  realizedProfit: unknown;
 };
 
 type SubscriptionForPlanUsage = {
@@ -81,6 +82,8 @@ export function formatMt5Account(account: Mt5AccountForResponse) {
     balance: decimalToNullableNumber(account.balance),
     equity: decimalToNullableNumber(account.equity),
     profit: decimalToNullableNumber(account.profit),
+    floatingProfit: decimalToNullableNumber(account.profit),
+    realizedProfit: decimalToNullableNumber(account.realizedProfit),
   };
 }
 

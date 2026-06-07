@@ -389,6 +389,15 @@ export interface SignalHistoryResponse {
   type: 'BUY' | 'SELL';
   volume: number;
   price: number;
+  openPrice?: number | null;
+  closePrice?: number | null;
+  priceDifference?: number | null;
+  directionalPriceDifference?: number | null;
+  reportedPnl?: number | null;
+  calculatedPnl?: number | null;
+  resultPnl?: number | null;
+  resultSource?: 'CALCULATED_FROM_PRICES' | 'REPORTED_BY_MT5' | null;
+  matchedOpenSignalId?: string | null;
   sl: number | null;
   tp: number | null;
   status: string;
@@ -499,6 +508,8 @@ export interface MT5AccountResponse {
   balance: number | null;
   equity: number | null;
   profit: number | null;
+  floatingProfit: number | null;
+  realizedProfit: number | null;
 }
 
 export interface MT5PlanUsageResponse {

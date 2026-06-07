@@ -1,0 +1,21 @@
+Folder PATH listing for volume Airborne_Ranger
+Volume serial number is F800-F794
+D:\DOCUMENTS\WEBSITE PROJECT\SIGNAL-SERVICE-PLATFORM-V1\EA'S-PRIVATE
+|   .gitignore
+|   
++---mq4
+|   +---receiver
+|   \---sender
+\---mq5
+    +---receiver
+    |       SignalReceiver-L-v1.13.mq5
+    |       SignalReceiver-P-v1.13 copy 2.mq5
+    |       SignalReceiver-P-v1.13 copy 3.mq5
+    |       SignalReceiver-P-v1.13 copy 4.mq5
+    |       SignalReceiver-P-v1.13 copy.mq5
+    |       SignalReceiver-P-v1.13.mq5
+    |       
+    \---sender
+            SignalSender-L-v1.12.mq5
+            SignalSender-P-v1.12.mq5
+            

@@ -75,6 +75,7 @@ router.post('/', authenticate, asyncHandler(async (req: Request, res: Response) 
       type: data?.type,
       volume: data?.volume,
       price: data?.price,
+      profit: data?.profit,
       sl: data?.sl,
       tp: data?.tp,
       ticket: data?.ticket,
@@ -119,6 +120,8 @@ router.post('/heartbeat', authenticate, asyncHandler(async (req: Request, res: R
     balance: data?.balance,
     equity: data?.equity,
     profit: data?.profit,
+    realizedProfit: data?.realizedProfit,
+    realized_profit: data?.realized_profit,
   });
 
   res.json(result);
@@ -216,6 +219,15 @@ router.get('/history', authenticate, asyncHandler(async (req: Request, res: Resp
       type: s.type,
       volume: Number(s.volume),
       price: Number(s.price),
+      openPrice: s.tradeResult.openPrice,
+      closePrice: s.tradeResult.closePrice,
+      priceDifference: s.tradeResult.priceDifference,
+      directionalPriceDifference: s.tradeResult.directionalPriceDifference,
+      reportedPnl: s.tradeResult.reportedPnl,
+      calculatedPnl: s.tradeResult.calculatedPnl,
+      resultPnl: s.tradeResult.resultPnl,
+      resultSource: s.tradeResult.resultSource,
+      matchedOpenSignalId: s.tradeResult.matchedOpenSignalId,
       sl: s.sl ? Number(s.sl) : null,
       tp: s.tp ? Number(s.tp) : null,
       status: s.status,

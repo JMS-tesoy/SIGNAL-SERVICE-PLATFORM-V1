@@ -9,6 +9,7 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
+  Info,
   Camera,
   X,
 } from 'lucide-react';
@@ -116,11 +117,18 @@ export default function SettingsPage() {
     phone: '',
     avatar: '',
   });
+  const [savedProfile, setSavedProfile] = useState({
+    name: '',
+    phone: '',
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState('');
   const [message, setMessage] = useState({ type: '', text: '' });
+  const [showDeleteNotice, setShowDeleteNotice] = useState(false);
+  const hasProfileChanges =
+    profile.name !== savedProfile.name || profile.phone !== savedProfile.phone;
 
   useEffect(() => {
     fetchProfile({ showLoading: true });
@@ -148,6 +156,10 @@ export default function SettingsPage() {
           email: profileUser.email,
           phone: profileUser.phone || '',
           avatar: profileUser.avatar || '',
+        });
+        setSavedProfile({
+          name: profileUser.name || '',
+          phone: profileUser.phone || '',
         });
 
         setUser({
@@ -264,6 +276,10 @@ export default function SettingsPage() {
         setMessage({ type: 'error', text: result.error });
       } else {
         setMessage({ type: 'success', text: 'Profile updated successfully' });
+        setSavedProfile({
+          name: profile.name,
+          phone: profile.phone,
+        });
         setUser({
           ...user,
           ...(result.data?.user || {}),
@@ -287,7 +303,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 w-full max-w-4xl mx-auto px-2 sm:px-0">
+    <div className="mx-auto w-full max-w-6xl space-y-6 px-2 sm:px-0">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold mb-2">Settings</h1>
         <p className="text-sm sm:text-base text-foreground-muted">
@@ -323,150 +339,169 @@ export default function SettingsPage() {
         </motion.div>
       )}
 
-      {/* Profile Settings */}
-      <div className="card">
-        <h2 className="text-base sm:text-lg font-semibold mb-6 flex items-center gap-2">
-          <User className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-          <span className="truncate">Profile Information</span>
-        </h2>
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(280px,0.8fr)] lg:items-start">
+        {/* Profile Settings */}
+        <div className="card">
+          <h2 className="text-base sm:text-lg font-semibold mb-6 flex items-center gap-2">
+            <User className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+            <span className="truncate">Profile Information</span>
+          </h2>
 
-        {/* Avatar Section */}
-        <div className="flex flex-col sm:flex-row items-center gap-6 mb-8 pb-6 border-b border-border">
-          <div className="relative group">
-            <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center">
-              {avatarPreview || profile.avatar ? (
-                <img
-                  src={avatarPreview || profile.avatar}
-                  alt="Avatar"
-                  className="w-full h-full object-cover"
+          {/* Avatar Section */}
+          <div className="flex flex-col sm:flex-row items-center gap-6 mb-8 pb-6 border-b border-border">
+            <div className="relative group">
+              <div className="w-24 h-24 rounded-full overflow-hidden bg-gradient-to-br from-primary to-accent-purple flex items-center justify-center">
+                {avatarPreview || profile.avatar ? (
+                  <img
+                    src={avatarPreview || profile.avatar}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-10 h-10 text-white" />
+                )}
+              </div>
+
+              {/* Upload overlay */}
+              <label htmlFor="profile-avatar" className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                {isUploadingAvatar ? (
+                  <Loader2 className="w-6 h-6 text-white animate-spin" />
+                ) : (
+                  <Camera className="w-6 h-6 text-white" />
+                )}
+                <input
+                  id="profile-avatar"
+                  name="avatar"
+                  aria-label="Upload profile photo"
+                  type="file"
+                  accept={AVATAR_ACCEPT_TYPES}
+                  onChange={handleAvatarChange}
+                  className="hidden"
+                  disabled={isUploadingAvatar}
                 />
-              ) : (
-                <User className="w-10 h-10 text-white" />
+              </label>
+
+              {/* Remove button */}
+              {profile.avatar && !avatarPreview && (
+                <button
+                  type="button"
+                  aria-label="Remove profile photo"
+                  onClick={handleRemoveAvatar}
+                  disabled={isUploadingAvatar}
+                  className="absolute -top-1 -right-1 w-6 h-6 bg-accent-red rounded-full flex items-center justify-center text-white opacity-0 pointer-events-none transition-all hover:bg-accent-red/80 group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               )}
             </div>
 
-            {/* Upload overlay */}
-            <label htmlFor="profile-avatar" className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-              {isUploadingAvatar ? (
-                <Loader2 className="w-6 h-6 text-white animate-spin" />
-              ) : (
-                <Camera className="w-6 h-6 text-white" />
-              )}
-              <input
-                id="profile-avatar"
-                name="avatar"
-                aria-label="Upload profile photo"
-                type="file"
-                accept={AVATAR_ACCEPT_TYPES}
-                onChange={handleAvatarChange}
-                className="hidden"
-                disabled={isUploadingAvatar}
-              />
-            </label>
-
-            {/* Remove button */}
-            {profile.avatar && !avatarPreview && (
-              <button
-                type="button"
-                aria-label="Remove profile photo"
-                onClick={handleRemoveAvatar}
-                disabled={isUploadingAvatar}
-                className="absolute -top-1 -right-1 w-6 h-6 bg-accent-red rounded-full flex items-center justify-center text-white opacity-0 pointer-events-none transition-all hover:bg-accent-red/80 group-hover:opacity-100 group-hover:pointer-events-auto focus-visible:opacity-100 focus-visible:pointer-events-auto"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
+            <div className="text-center sm:text-left">
+              <h3 className="font-medium mb-1">Profile Photo</h3>
+              <p className="text-sm text-foreground-muted mb-3">
+                Click on the avatar to upload a new photo
+              </p>
+              <p className="text-xs text-foreground-subtle">
+                JPG, PNG, or WebP. Max {formatFileSize(MAX_AVATAR_SOURCE_SIZE)}. Optimized before saving.
+              </p>
+            </div>
           </div>
 
-          <div className="text-center sm:text-left">
-            <h3 className="font-medium mb-1">Profile Photo</h3>
-            <p className="text-sm text-foreground-muted mb-3">
-              Click on the avatar to upload a new photo
-            </p>
-            <p className="text-xs text-foreground-subtle">
-              JPG, PNG, or WebP. Max {formatFileSize(MAX_AVATAR_SOURCE_SIZE)}. Optimized before saving.
-            </p>
-          </div>
+          <form onSubmit={handleSaveProfile} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="min-w-0">
+                <label htmlFor="profile-name" className="block text-xs sm:text-sm font-medium mb-2">Name</label>
+                <input
+                  id="profile-name"
+                  name="name"
+                  aria-label="Name"
+                  type="text"
+                  value={profile.name}
+                  onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+                  className="input"
+                  placeholder="Your name"
+                  autoComplete="name"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <div className="mb-2 flex items-center gap-1.5">
+                  <label htmlFor="profile-email" className="block text-xs font-medium sm:text-sm">Email</label>
+                  <button type="button" className="group relative inline-flex">
+                    <Info
+                      className="h-3.5 w-3.5 cursor-help text-foreground-subtle"
+                      aria-label="Email cannot be changed. Contact support if needed."
+                    />
+                    <span className="pointer-events-none absolute left-1/2 top-full z-20 mt-2 hidden w-56 -translate-x-1/2 rounded-lg border border-border bg-background-card px-3 py-2 text-xs font-normal text-foreground-muted shadow-xl group-hover:block group-focus-within:block">
+                      Email cannot be changed. Contact support if needed.
+                    </span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <Mail className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-foreground-subtle" />
+                  <input
+                    id="profile-email"
+                    name="email"
+                    aria-label="Email"
+                    type="email"
+                    value={profile.email}
+                    className="input cursor-not-allowed bg-background-elevated pl-10 text-sm text-foreground-muted opacity-70 sm:pl-12"
+                    disabled
+                    readOnly
+                    autoComplete="email"
+                  />
+                </div>
+              </div>
+
+              <div className="min-w-0">
+                <label htmlFor="profile-phone" className="block text-xs sm:text-sm font-medium mb-2">Phone Number</label>
+                <div className="relative">
+                  <Phone className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-foreground-subtle" />
+                  <input
+                    id="profile-phone"
+                    name="phone"
+                    aria-label="Phone number"
+                    type="tel"
+                    value={profile.phone}
+                    onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
+                    className="input pl-10 sm:pl-12 text-sm"
+                    placeholder="+1234567890"
+                    autoComplete="tel"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSaving || !hasProfileChanges}
+              className="btn-primary flex items-center gap-2 text-sm sm:text-base disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Save Changes
+            </button>
+          </form>
         </div>
 
-        <form onSubmit={handleSaveProfile} className="space-y-4">
-          <div>
-            <label htmlFor="profile-name" className="block text-xs sm:text-sm font-medium mb-2">Name</label>
-            <input
-              id="profile-name"
-              name="name"
-              aria-label="Name"
-              type="text"
-              value={profile.name}
-              onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-              className="input"
-              placeholder="Your name"
-              autoComplete="name"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="profile-email" className="block text-xs sm:text-sm font-medium mb-2">Email</label>
-            <div className="relative">
-              <Mail className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-foreground-subtle" />
-              <input
-                id="profile-email"
-                name="email"
-                aria-label="Email"
-                type="email"
-                value={profile.email}
-                className="input pl-10 sm:pl-12 bg-background-elevated cursor-not-allowed text-sm"
-                disabled
-                readOnly
-                autoComplete="email"
-              />
+        {/* Danger Zone */}
+        <div className="card border-accent-red/20">
+          <h2 className="text-base sm:text-lg font-semibold mb-4 text-accent-red">Danger Zone</h2>
+          <p className="text-sm sm:text-base text-foreground-muted mb-4">
+            Once you delete your account, there is no going back. Please be certain.
+          </p>
+          {showDeleteNotice && (
+            <div className="mb-4 flex items-start gap-2 rounded-lg border border-accent-red/20 bg-accent-red/10 p-3 text-sm text-accent-red">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+              <p>Please contact support to delete your account.</p>
             </div>
-            <p className="text-[10px] sm:text-xs text-foreground-muted mt-1">
-              Email cannot be changed. Contact support if needed.
-            </p>
-          </div>
-
-          <div>
-            <label htmlFor="profile-phone" className="block text-xs sm:text-sm font-medium mb-2">Phone Number</label>
-            <div className="relative">
-              <Phone className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 text-foreground-subtle" />
-              <input
-                id="profile-phone"
-                name="phone"
-                aria-label="Phone number"
-                type="tel"
-                value={profile.phone}
-                onChange={(e) => setProfile({ ...profile, phone: e.target.value })}
-                className="input pl-10 sm:pl-12 text-sm"
-                placeholder="+1234567890"
-                autoComplete="tel"
-              />
-            </div>
-          </div>
-
+          )}
           <button
-            type="submit"
-            disabled={isSaving}
-            className="btn-primary flex items-center gap-2 text-sm sm:text-base"
+            type="button"
+            onClick={() => setShowDeleteNotice(true)}
+            className="px-3 sm:px-4 py-2 border border-accent-red/50 text-accent-red text-sm sm:text-base rounded-lg hover:bg-accent-red/10 transition"
           >
-            {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            Save Changes
+            Delete Account
           </button>
-        </form>
-      </div>
-
-      {/* Danger Zone */}
-      <div className="card border-accent-red/20">
-        <h2 className="text-base sm:text-lg font-semibold mb-4 text-accent-red">Danger Zone</h2>
-        <p className="text-sm sm:text-base text-foreground-muted mb-4">
-          Once you delete your account, there is no going back. Please be certain.
-        </p>
-        <button
-          onClick={() => alert('Please contact support to delete your account.')}
-          className="px-3 sm:px-4 py-2 border border-accent-red/50 text-accent-red text-sm sm:text-base rounded-lg hover:bg-accent-red/10 transition"
-        >
-          Delete Account
-        </button>
+        </div>
       </div>
     </div>
   );

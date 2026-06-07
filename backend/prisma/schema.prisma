@@ -37,6 +37,7 @@ model MT5Account {
   balance                Decimal             @default(0) @db.Decimal(15, 2)
   equity                 Decimal             @default(0) @db.Decimal(15, 2)
   profit                 Decimal             @default(0) @db.Decimal(15, 2)
+  realizedProfit         Decimal             @default(0) @db.Decimal(15, 2)
   createdAt              DateTime            @default(now())
   updatedAt              DateTime            @updatedAt
   apiKey                 String?             @unique
@@ -179,6 +180,7 @@ model Signal {
   type         TradeType
   volume       Decimal           @db.Decimal(10, 2)
   price        Decimal           @db.Decimal(15, 5)
+  profit       Decimal?          @db.Decimal(15, 2)
   sl           Decimal?          @db.Decimal(15, 5)
   tp           Decimal?          @db.Decimal(15, 5)
   masterTicket     BigInt?

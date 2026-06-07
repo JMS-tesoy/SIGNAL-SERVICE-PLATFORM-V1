@@ -28,6 +28,12 @@ export function formatMoneyValue(value: number | null | undefined) {
   return `${value >= 0 ? '+' : '-'}$${Math.abs(value).toFixed(2)}`;
 }
 
+export function formatSignedTradePrice(value: number | null | undefined) {
+  if (typeof value !== 'number') return '-';
+
+  return `${value >= 0 ? '+' : '-'}${formatTradePrice(Math.abs(value))}`;
+}
+
 export function formatCompactDateTime(value: string | null | undefined) {
   if (!value) return 'No report time';
 

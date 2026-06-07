@@ -13,7 +13,6 @@ import {
   Search,
   TrendingDown,
   TrendingUp,
-  X,
 } from 'lucide-react';
 import { useAuthStore } from '@/lib/store';
 import {
@@ -21,6 +20,7 @@ import {
   type SignalHistoryResponse,
   type SignalStatsResponse,
 } from '@/lib/api';
+import { SignalDetailsModal } from './components/SignalDetailsModal';
 
 type StatusFilter = 'ALL' | 'EXECUTED' | 'PENDING' | 'FAILED' | 'SKIPPED' | 'EXPIRED' | 'CANCELED';
 type ActionFilter = 'ALL' | 'OPEN' | 'CLOSE' | 'MODIFY';
@@ -687,73 +687,11 @@ export default function SignalsPage() {
       </div>
 
       {selectedSignal && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4">
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-border bg-background-card p-5 shadow-xl sm:max-w-2xl sm:rounded-2xl sm:p-6"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm text-foreground-muted">Signal details</p>
-                <h2 className="mt-1 text-xl font-bold">{selectedSignal.symbol}</h2>
-              </div>
-              <button
-                onClick={() => setSelectedSignal(null)}
-                className="rounded-lg p-2 text-foreground-muted hover:bg-background-elevated hover:text-foreground"
-                aria-label="Close signal details"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <DetailItem label="Status" value={getDisplayStatus(selectedSignal)} />
-              <DetailItem label="Created" value={formatDate(selectedSignal.createdAt)} />
-              <DetailItem label="Type" value={selectedSignal.type} />
-              <DetailItem label="Action" value={selectedSignal.action} />
-              <DetailItem label="Volume" value={formatVolume(selectedSignal.volume)} />
-              <DetailItem label="Signal price" value={formatPrice(selectedSignal.price)} />
-              <DetailItem label="Stop loss" value={formatPrice(selectedSignal.sl)} />
-              <DetailItem label="Take profit" value={formatPrice(selectedSignal.tp)} />
-              <DetailItem
-                label="Execution status"
-                value={selectedSignal.execution?.status || '-'}
-              />
-              <DetailItem
-                label="Executed price"
-                value={formatPrice(selectedSignal.execution?.executedPrice)}
-              />
-              <DetailItem
-                label="Executed time"
-                value={formatDate(selectedSignal.execution?.executedAt || null)}
-              />
-              <DetailItem
-                label="Error code"
-                value={selectedSignal.execution?.errorCode?.toString() || '-'}
-              />
-            </div>
-
-            {selectedSignal.execution?.errorMessage && (
-              <div className="mt-3 rounded-lg border border-accent-red/20 bg-accent-red/5 p-3">
-                <p className="text-xs text-foreground-muted">Execution message</p>
-                <p className="mt-1 text-sm text-accent-red">
-                  {selectedSignal.execution.errorMessage}
-                </p>
-              </div>
-            )}
-          </motion.div>
-        </div>
+        <SignalDetailsModal
+          signal={selectedSignal}
+          onClose={() => setSelectedSignal(null)}
+        />
       )}
-    </div>
-  );
-}
-
-function DetailItem({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-background-elevated/30 p-3">
-      <p className="text-xs text-foreground-muted">{label}</p>
-      <p className="mt-1 break-words font-mono text-sm">{value}</p>
     </div>
   );
 }

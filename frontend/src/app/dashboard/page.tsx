@@ -82,7 +82,11 @@ export default function DashboardPage() {
       });
       if (recentSignalsResult.data) {
         const closedSignals = (recentSignalsResult.data.signals as RecentSignal[])
-          .filter((signal) => typeof signal.execution?.closePrice === 'number')
+          .filter((signal) =>
+            typeof signal.closePrice === 'number' ||
+            typeof signal.execution?.closePrice === 'number' ||
+            (signal.action === 'CLOSE' && typeof signal.execution?.executedPrice === 'number')
+          )
           .slice(0, 5);
 
         setRecentSignals(closedSignals);
@@ -352,9 +356,11 @@ export default function DashboardPage() {
           
           {recentSignals.length > 0 ? (
             <div>
-              <div className="grid grid-cols-[minmax(0,1.45fr)_minmax(96px,0.8fr)_minmax(120px,0.9fr)] gap-3 border-b border-border pb-2 text-xs font-medium uppercase tracking-wide text-foreground-muted">
+              <div className="grid grid-cols-[minmax(0,1.35fr)_minmax(82px,0.7fr)_minmax(82px,0.7fr)_minmax(82px,0.7fr)_minmax(110px,0.85fr)] gap-3 border-b border-border pb-2 text-xs font-medium uppercase tracking-wide text-foreground-muted">
                 <span>Trade</span>
+                <span className="text-right">Open</span>
                 <span className="text-right">Close</span>
+                <span className="text-right">Changes</span>
                 <span className="text-right">Result</span>
               </div>
               {recentSignals.map((signal) => (

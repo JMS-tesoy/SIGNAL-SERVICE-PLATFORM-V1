@@ -159,7 +159,7 @@ export default function DownloadsPage() {
       </div>
 
       {/* Downloads List */}
-      <div className="space-y-4">
+      <div className="grid gap-4 lg:grid-cols-2">
         {downloads.length === 0 ? (
           <div className="card text-center py-12">
             <Download className="w-16 h-16 mx-auto mb-4 text-foreground-subtle opacity-50" />
@@ -178,22 +178,22 @@ export default function DownloadsPage() {
                 transition={{ delay: index * 0.1 }}
                 className="card"
               >
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center">
+                <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
+                  <div className="flex min-w-0 items-center gap-4">
+                    <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10">
                       <FileDown className="w-6 h-6 text-primary" />
                     </div>
-                    <div>
-                      <h3 className="font-semibold">{file.name}</h3>
-                      <p className="text-sm text-foreground-muted">{file.description}</p>
-                      <p className="text-xs text-foreground-subtle mt-1">{file.filename}</p>
+                    <div className="min-w-0">
+                      <h3 className="truncate font-semibold">{file.name}</h3>
+                      <p className="line-clamp-2 text-sm text-foreground-muted">{file.description}</p>
+                      <p className="mt-1 truncate text-xs text-foreground-subtle">{file.filename}</p>
                     </div>
                   </div>
 
                   <button
                     onClick={() => handleDownload(file)}
                     disabled={downloadingId === file.id}
-                    className="btn-primary flex items-center gap-2 w-full sm:w-auto justify-center"
+                    className="btn-primary flex w-full flex-shrink-0 items-center justify-center gap-2 sm:w-auto"
                   >
                     {downloadingId === file.id ? (
                       <>

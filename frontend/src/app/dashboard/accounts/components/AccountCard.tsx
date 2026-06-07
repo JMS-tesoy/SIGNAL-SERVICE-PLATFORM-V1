@@ -169,6 +169,7 @@ export function AccountCard({
   const HealthIcon = health.icon;
   const keyForThisAccount = generatedKey?.id === account.id ? generatedKey.key : null;
   const isMasterAccount = account.accountType === "MASTER";
+  const realizedProfit = account.realizedProfit ?? 0;
   const eaTypeLabel = isMasterAccount ? "Sender EA" : "Receiver EA";
   const licenseValidity = getLicenseValidity(account as AccountWithLicense, eaTypeLabel);
   const mt5WebRequestUrl = "https://api.tesoy.online";
@@ -227,9 +228,9 @@ export function AccountCard({
         <div className="flex flex-wrap items-center gap-4 lg:justify-end">
           <div className="rounded-lg border border-border bg-background/60 px-3 py-2 text-right">
             <p className="font-mono text-sm">{money(account.balance)}</p>
-            <p className={`text-xs ${(account.profit || 0) >= 0 ? "text-accent-green" : "text-accent-red"}`}>
-              {(account.profit || 0) >= 0 ? "+" : ""}
-              {(account.profit || 0).toFixed(2)}
+            <p className={`text-xs ${realizedProfit >= 0 ? "text-accent-green" : "text-accent-red"}`}>
+              {realizedProfit >= 0 ? "+" : ""}
+              {realizedProfit.toFixed(2)}
             </p>
           </div>
 

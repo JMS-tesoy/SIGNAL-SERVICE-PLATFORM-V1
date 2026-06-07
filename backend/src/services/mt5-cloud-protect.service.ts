@@ -338,6 +338,7 @@ export async function recordMt5Heartbeat(rawApiKey: string | null, input: Mt5Hea
   if (trialError) return { ...trialError, ok: false, continue: false };
 
   const now = new Date();
+  const realizedProfit = input.realizedProfit ?? input.realized_profit;
 
   await prisma.mT5LicenseSession.update({
     where: { id: session.id },
@@ -359,6 +360,7 @@ export async function recordMt5Heartbeat(rawApiKey: string | null, input: Mt5Hea
       balance: input.balance,
       equity: input.equity,
       profit: input.profit,
+      realizedProfit,
     },
   });
 

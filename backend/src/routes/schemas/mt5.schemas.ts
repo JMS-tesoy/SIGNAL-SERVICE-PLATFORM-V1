@@ -34,6 +34,8 @@ export const mt5HeartbeatSchema = z.object({
   balance: z.number().finite().optional(),
   equity: z.number().finite().optional(),
   profit: z.number().finite().optional(),
+  realizedProfit: z.number().finite().optional(),
+  realized_profit: z.number().finite().optional(),
 });
 
 export const mt5SignalsPullSchema = z.object({
